@@ -5,6 +5,16 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // ✅ CORS FIX
+  app.enableCors({
+    origin: [
+      'https://www.mentaltalks.co.id',
+      'https://api.mentaltalks.co.id',
+      'http://localhost:3000',
+    ],
+    credentials: true,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
