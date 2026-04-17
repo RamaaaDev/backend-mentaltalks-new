@@ -1,0 +1,391 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+  PSYCHOLOGIST
+}
+
+enum OtpType {
+  REGISTER
+  FORGOT_PASSWORD
+}
+
+enum DiscountType {
+  FIXED 
+  PERCENTAGE
+}
+
+enum ArticleCategory {
+  KONSULTASI
+  EDUKASI
+  MEDITASI
+}
+
+enum MeetingType {
+  CHAT
+  ONLINE
+  OFFLINE
+}
+
+enum NotificationType {
+  BOOKING
+  PAYMENT
+  MEETING
+} 
+
+enum NotificationReferenceType { 
+  BOOKINGID
+  MEETINGID
+}
+
+enum BookingStatus {
+  PENDING
+  PROGRESS
+  DONE
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELED
+}
+
+
+model User {
+  user_id               String    @id @default(uuid())
+  user_username         String    @unique
+  user_name             String?   
+  user_email            String?   
+  user_phone            String?   
+  user_role             Role      @default(USER)
+  user_birthday         DateTime? 
+  user_createdAt        DateTime  @default(now()) 
+  user_updatedAt        DateTime  @updatedAt
+  user_isActive         Boolean   @default(false) //account can be used
+  user_photos           String?
+  user_passwordHash     String?
+  user_refreshToken     String?  //session
+  isVerified            Boolean @default(false)
+
+  otp                    Otp?
+  user_admin             AdminProfile?
+  user_psychologist      PsychologistProfile?
+  user_bookings          BookingPsychologist[]
+  user_testimonials      Testimonials?
+  user_reviewsPsikolog   ReviewsPsikolog[]
+  user_reviewsOffice     ReviewsOffice[]    
+  user_meetings          MeetingRoom[]
+  user_message           MeetingMessage[]
+  couponUsages           CouponUsage[]
+
+  @@index([user_role])
+  @@map("user")  //names in table database
+  notications Notication[]
+}
+
+model Otp {
+  otp_id                  String @id @default(cuid())
+  otp_code                String
+  otp_type                OtpType  
+  otp_expiredAt           DateTime
+  otp_createdAt           DateTime @default(now())
+
+  otp_userId              String @unique
+  otp_user                User @relation(fields: [otp_userId], references: [user_id], onDelete: Cascade)
+  
+  @@map("otp")
+}
+
+model AdminProfile {
+  admin_id         String @id
+  admin_userId     String @unique
+  admin_specialty  String // Specific job (Like a engineer or pure admin)
+  admin_user       User   @relation(fields: [admin_userId], references: [user_id])
+
+  @@map("admin_profiles") //names in table database
+}
+
+model PsychologistProfile {
+  psychologist_id              String   @id @default(uuid())
+  psychologist_userId          String   @unique
+  psychologist_name            String   // full name with title 
+  psychologist_education       String[] // study history
+  psychologist_bio             String   
+  psychologist_quotes          String?
+  psychologist_specialties     String[] //for filter category
+  psychologist_yearsExperience Int
+  psychologist_rating          Float        @default(0)
+  psychologist_ratingsCount    Int          @default(0)
+  psychologist_createdAt       DateTime      @default(now())
+  psychologist_updatedAt       DateTime      @updatedAt
+  psychologist_user            User          @relation(fields: [psychologist_userId], references: [user_id])  
+  
+  pscyhologist_schedule        Schedule[]
+  psychologist_reviews         ReviewsPsikolog[]
+  pscyhologist_bookings        BookingPsychologist[]
+  pscyhologist_meetings        MeetingRoom[]
+  pscyhologist_article         Article[]
+
+  @@index([psychologist_specialties])
+  @@map("psychologist_profiles")
+}
+
+model Schedule { 
+  schedule_id                     String @id @default(uuid())
+  schedule_psychologistId         String
+  schedule_startTime              DateTime
+  schedule_endTime                DateTime
+  schedule_locationId             String?
+  schedule_price                  Int
+
+  schedule_location               LocationOffice?      @relation(fields: [schedule_locationId], references: [location_id])
+  schedule_psychologistProfile    PsychologistProfile @relation(fields: [schedule_psychologistId], references: [psychologist_id])
+  schedule_type                   MeetingType
+  schedule_booking                BookingPsychologist?
+
+  @@index([schedule_psychologistId, schedule_startTime, schedule_type, schedule_locationId])
+  @@map("schedules")
+}
+
+model Coupon {
+  coupon_id              String    @id @default(uuid())
+  coupon_code            String    @unique
+  coupon_value           Int // % or nominal
+  coupon_maxDiscount     Int?
+  coupon_minPurchase     Int?
+  coupon_usageLimit      Int?
+  coupon_usedCount       Int        @default(0)
+  coupon_expiresAt       DateTime
+  coupon_isActive        Boolean    @default(true)
+  coupon_createdAt       DateTime   @default(now())
+
+  coupon_type            DiscountType
+  coupon_booking         BookingPsychologist[]
+  couponUsages           CouponUsage[]
+
+  @@map("coupon")
+}
+
+model CouponUsage {
+  couponUsage_id            String @id @default(uuid())
+  couponUsage_couponId      String
+  couponUsage_userId        String
+  couponUsage_usedAt        DateTime @default(now())
+  
+  couponUsage_coupon        Coupon @relation(fields: [couponUsage_couponId], references: [coupon_id])
+  couponUsage_user          User @relation(fields: [couponUsage_userId], references: [user_id])
+
+  @@unique([couponUsage_couponId, couponUsage_userId])
+  @@map("coupon_usage")
+}
+
+model LocationOffice {
+  location_id            String   @id @default(uuid())
+  location_name          String
+  location_address       String
+  location_addressDetail String
+  location_photos        String[]
+  location_createdAt     DateTime   @default(now())
+  location_updateAt      DateTime   @updatedAt
+
+  location_review        ReviewsOffice[]
+  location_schedules     Schedule[]
+
+  @@map("location_office")
+}
+
+model ReviewsPsikolog {
+  reviewPsikolog_id              String   @id @default(uuid())
+  reviewPsikolog_userId          String
+  reviewPsikolog_psychologistId  String
+  reviewPsikolog_bookingId       String? @unique
+  reviewPsikolog_rating          Int
+  reviewPsikolog_comment         String?
+  reviewPsikolog_isVerified      Boolean  @default(false)
+  reviewPsikolog_createdAt       DateTime @default(now())
+  reviewPsikolog_updatedAt       DateTime @updatedAt
+
+  reviewPsikolog_user            User                 @relation(fields: [reviewPsikolog_userId], references: [user_id], onDelete: Cascade)
+  reviewPsikolog_psychologist    PsychologistProfile  @relation(fields: [reviewPsikolog_psychologistId], references: [psychologist_id], onDelete: Cascade)
+  reviewPsikolog_booking         BookingPsychologist? @relation(fields: [reviewPsikolog_bookingId], references: [booking_id])
+
+  @@unique([reviewPsikolog_userId, reviewPsikolog_psychologistId])
+  @@index([reviewPsikolog_psychologistId, reviewPsikolog_rating])
+  @@map("reviews_psikolog")
+}
+
+model ReviewsOffice {
+  reviewOffice_id          String   @id @default(uuid())
+  reviewOffice_userId      String
+  reviewOffice_locationId  String
+  reviewOffice_bookingId   String? @unique
+  reviewOffice_rating      Int
+  reviewOffice_comment     String?
+  reviewOffice_photos      String[]
+  reviewOffice_createdAt   DateTime @default(now())
+  reviewOffice_updatedAt   DateTime @updatedAt
+
+  reviewOffice_user        User                  @relation(fields: [reviewOffice_userId], references: [user_id], onDelete: Cascade)
+  reviewOffice_location    LocationOffice        @relation(fields: [reviewOffice_locationId], references: [location_id], onDelete: Cascade)
+  reviewOffice_booking     BookingPsychologist?  @relation(fields: [reviewOffice_bookingId], references: [booking_id])
+
+  @@unique([reviewOffice_userId, reviewOffice_locationId])
+  @@index([reviewOffice_locationId, reviewOffice_rating])
+  @@map("reviews_office")
+}
+
+model Testimonials { //for review web experience
+  testimonial_id      String @id @default(uuid())
+  testimonial_userId  String @unique
+  testimonial_rating  Float
+  testimonial_comment String
+
+  testimonial_user    User   @relation(fields: [testimonial_userId], references: [user_id])
+
+  @@map("testimonials")
+}
+
+model Article {
+  id      String  @id @default(cuid())
+  title   String
+  slug    String  @unique
+  excerpt String? // ringkasan singkat (max ~160 karakter)
+  content String // isi artikel dalam format markdown
+
+  category    ArticleCategory
+  tags        String[] 
+  featured    Boolean         @default(false)
+  views       Int             @default(0)
+  likes       Int             @default(0)
+  publishedAt DateTime        @default(now())
+
+  authorId String
+  author   PsychologistProfile @relation(fields: [authorId], references: [psychologist_id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("article")
+}
+
+model BookingPsychologist {
+  booking_id              String        @id @default(uuid())
+  booking_userId          String
+  booking_psychologistId  String
+  booking_scheduleId      String        @unique
+  booking_couponId        String?
+  booking_status          BookingStatus @default(PENDING)
+  booking_type            MeetingType
+  booking_notes           String?       // keluhan/catatan awal dari user
+  booking_createdAt       DateTime      @default(now())
+  booking_updatedAt       DateTime      @updatedAt
+
+  booking_user            User  @relation(fields: [booking_userId], references: [user_id], onDelete: Cascade)
+  booking_psychologist    PsychologistProfile  @relation(fields: [booking_psychologistId], references: [psychologist_id], onDelete: Cascade)
+  booking_schedule        Schedule   @relation(fields: [booking_scheduleId], references: [schedule_id], onDelete: Cascade)
+  booking_coupon          Coupon? @relation(fields: [booking_couponId], references: [coupon_id])
+  booking_payment         Payment?
+  booking_meetingRoom     MeetingRoom?
+  booking_reviewPsikolog  ReviewsPsikolog?
+  booking_reviewOffice    ReviewsOffice?
+
+  @@index([booking_userId, booking_status])
+  @@index([booking_psychologistId, booking_status])
+  @@map("booking_psychologist")
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  bookingId       String?   @unique
+  orderId         String    @unique
+  token           String
+  redirectUrl     String
+  status          String
+  grossAmount     Int
+  paymentType     String?
+  transactionId   String?
+  transactionTime DateTime?
+  fraudStatus     String?
+  meta            Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  booking BookingPsychologist? @relation(fields: [bookingId], references: [booking_id], onDelete: Cascade)
+
+  @@map("payment")
+}
+
+model MeetingRoom {
+  meeting_id            String        @id @unique
+  booking_id            String        @unique
+  meeting_hostId        String
+  meeting_participantId String
+  meeting_scheduleAt    DateTime
+  meeting_startedAt     DateTime?
+  meeting_endedAt       DateTime?
+  meeting_status        MeetingStatus @default(SCHEDULED)
+  meeting_createdAt     DateTime      @default(now())
+  meeting_updatedAt     DateTime      @updatedAt
+
+  booking     BookingPsychologist @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade)
+  host        PsychologistProfile @relation(fields: [meeting_hostId], references: [psychologist_id])
+  participant User                @relation(fields: [meeting_participantId], references: [user_id])
+  messages    MeetingMessage[]
+  recordings  MeetingRecording[]
+
+  @@index([meeting_hostId])
+  @@index([meeting_participantId])
+  @@map("meeting_rooms")
+}
+
+model MeetingMessage {
+  meetingMessage_id        String   @id @default(uuid())
+  meetingMessage_roomId    String
+  meetingMessage_senderId  String
+  meetingMessage_content   String
+  meetingMessage_createdAt DateTime @default(now())
+
+  room   MeetingRoom @relation(fields: [meetingMessage_roomId], references: [meeting_id], onDelete: Cascade)
+  sender User        @relation(fields: [meetingMessage_senderId], references: [user_id], onDelete: Cascade)
+
+  @@index([meetingMessage_roomId])
+  @@index([meetingMessage_senderId])
+  @@map("meeting_messages")
+}
+
+model MeetingRecording {
+  meetingRecord_id        String   @id @default(uuid())
+  meetingRecord_roomId    String
+  meetingRecord_fileUrl   String // saved location record
+  startedAt               DateTime
+  meetingRecord_endedAt   DateTime
+  meetingRecord_createdAt DateTime @default(now())
+
+  room MeetingRoom @relation(fields: [meetingRecord_roomId], references: [meeting_id], onDelete: Cascade)
+
+  @@index([meetingRecord_roomId])
+  @@map("meeting_recordings")
+}
+
+model Notication {
+  notification_id     String @id @default(uuid())
+  notification_userId String 
+  notification_title  String
+  notification_body   String
+  notification_isRead Boolean @default(false)
+  notification_type   NotificationType
+  notification_referenceId  NotificationReferenceType
+  notification_createdAt    DateTime @default(now())
+
+  notification_user         User @relation(fields: [notification_userId], references: [user_id])
+
+  @@map("notification")
+}
