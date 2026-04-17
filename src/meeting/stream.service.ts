@@ -33,6 +33,12 @@ export class StreamService {
     participantId: string;
     scheduledAt: Date;
   }): Promise<{ callId: string; callType: string }> {
+    // ✅ WAJIB: pastikan user ada di Stream
+    await this.client.upsertUsers([
+      { id: params.hostId, name: params.hostId },
+      { id: params.participantId, name: params.participantId },
+    ]);
+
     const call = this.client.video.call('default', params.callId);
 
     await call.getOrCreate({
@@ -44,11 +50,11 @@ export class StreamService {
         ],
         settings_override: {
           limits: {
-            max_duration_seconds: 3600, // max 1 jam per sesi
-            max_participants: 2, // 1-on-1 only
+            max_duration_seconds: 3600,
+            max_participants: 2,
           },
           recording: {
-            mode: 'disabled', // aktifkan jika mau recording
+            mode: 'disabled',
           },
         },
         starts_at: params.scheduledAt,
