@@ -90,7 +90,7 @@ export class PaymentService {
       data: {
         bookingId,
         orderId,
-        token: sessionId,
+        token: sessionId ?? '',
         redirectUrl: paymentUrl,
         status: 'PENDING',
         grossAmount: amount,
