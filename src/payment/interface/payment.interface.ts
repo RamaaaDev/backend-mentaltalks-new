@@ -32,7 +32,8 @@ export interface IpaymuTransactionResponse {
 export interface IpaymuCallbackBody {
   sid: string;
   trx_id: string;
-  status: string;
+  status?: string;
+  status_code?: string;
   payment_method?: string;
 }
 

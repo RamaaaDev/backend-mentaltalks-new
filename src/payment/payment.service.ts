@@ -137,7 +137,19 @@ export class PaymentService {
     });
     if (!payment) return { message: 'Payment tidak ditemukan' };
 
-    const status = this.ipaymu.mapStatus(Number(statusCode));
+    let status: string;
+    console.log('CALLBACK BODY:', body);
+    const statusStr = (statusCode ?? '').toLowerCase();
+    if (['berhasil', 'success', 'sukses'].includes(statusStr)) {
+      status = 'SUCCESS';
+    } else if (statusStr === 'pending') {
+      status = 'PENDING';
+    } else if (statusStr === 'expired') {
+      status = 'EXPIRED';
+    } else {
+      // fallback: coba mapping by number (status_code)
+      status = this.ipaymu.mapStatus(Number(body.status_code));
+    }
 
     // Update payment
     await this.prisma.payment.update({
