@@ -47,21 +47,29 @@ export class AuthController {
   ) {
     const result = await this.authService.login(dto);
 
-    res.cookie('access_token', result.data.access_token, {
+    const cookieOptions = {
       httpOnly: true,
-      sameSite: 'none',
+      sameSite: 'none' as const,
       secure: true,
       path: '/',
       domain: '.mentaltalks.co.id',
+    };
+
+    // ✅ Clear cookie lama dulu — mencegah duplicate cookie
+    res.clearCookie('access_token', cookieOptions);
+    res.clearCookie('refresh_token', cookieOptions);
+
+    // ✅ Set cookie baru dengan maxAge
+    res.cookie('access_token', result.data.access_token, {
+      ...cookieOptions,
+      maxAge: 24 * 60 * 60 * 1000,
     });
 
     res.cookie('refresh_token', result.data.refresh_token, {
-      httpOnly: true,
-      sameSite: 'none',
-      secure: true,
-      path: '/',
-      domain: '.mentaltalks.co.id',
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
     return {
       message: result.message,
       data: {
