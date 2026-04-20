@@ -3,7 +3,7 @@ import { Request } from 'express';
 
 export interface RequestUser {
   user_id: string;
-  username: string;
+  user_username: string;
   user_role: Role;
 }
 

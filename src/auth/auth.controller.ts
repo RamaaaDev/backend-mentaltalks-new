@@ -7,6 +7,7 @@ import {
   UseGuards,
   Req,
   Res,
+  Get,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
@@ -67,6 +68,18 @@ export class AuthController {
         user_username: result.data.user_username,
         user_name: result.data.user_name,
         user_role: result.data.user_role,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Req() req: AuthenticatedRequest) {
+    return {
+      data: {
+        user_id: req.user.user_id,
+        user_username: req.user.user_username,
+        user_role: req.user.user_role,
       },
     };
   }
