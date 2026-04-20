@@ -6,6 +6,7 @@ import {
   HttpStatus,
   UseGuards,
   Req,
+  Res,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
@@ -17,6 +18,7 @@ import {
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
+import type { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -38,8 +40,37 @@ export class AuthController {
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(dto);
+
+    // 🔥 SET COOKIE DI SINI
+    res.cookie('access_token', result.data.access_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/',
+    });
+
+    res.cookie('refresh_token', result.data.refresh_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/',
+    });
+
+    // 🔥 jangan kirim token lagi ke frontend (optional, lebih aman)
+    return {
+      message: result.message,
+      data: {
+        user_id: result.data.user_id,
+        user_username: result.data.user_username,
+        user_name: result.data.user_name,
+        user_role: result.data.user_role,
+      },
+    };
   }
 
   /**
