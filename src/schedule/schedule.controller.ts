@@ -37,6 +37,11 @@ export class ScheduleController {
   findAvailable(@Query() query: QueryScheduleDto) {
     return this.scheduleService.findAvailable(query);
   }
+
+  @Get(':id')
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.scheduleService.findOne(id);
+  }
 }
 
 // ── PSYCHOLOGIST ──────────────────────────────────────────────────────────────

@@ -10,7 +10,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Role } from '@prisma/client';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
 
 @Injectable()
@@ -29,7 +28,7 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const { user } = request;
-    const hasRole = requiredRoles.includes(user?.user_role as Role);
+    const hasRole = requiredRoles.includes(user?.user_role);
 
     if (!hasRole) {
       throw new ForbiddenException('Akses ditolak');

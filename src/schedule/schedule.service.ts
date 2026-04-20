@@ -85,6 +85,25 @@ export class ScheduleService {
     };
   }
 
+  async findOne(id: string) {
+    const schedule = await this.prisma.schedule.findUnique({
+      where: { schedule_id: id },
+      include: {
+        schedule_psychologistProfile: {
+          include: {
+            psychologist_user: true,
+          },
+        },
+      },
+    });
+
+    if (!schedule) {
+      throw new NotFoundException('Schedule tidak ditemukan');
+    }
+
+    return schedule;
+  }
+
   // ── PSYCHOLOGIST: buat jadwal baru ────────────────────────────────────────
   async create(userId: string, dto: CreateScheduleDto) {
     const profile = await this.getProfileOrThrow(userId);
