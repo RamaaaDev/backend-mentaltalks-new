@@ -49,19 +49,17 @@ export class AuthController {
     // 🔥 SET COOKIE DI SINI
     res.cookie('access_token', result.data.access_token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       path: '/',
     });
 
     res.cookie('refresh_token', result.data.refresh_token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       path: '/',
     });
-
-    // 🔥 jangan kirim token lagi ke frontend (optional, lebih aman)
     return {
       message: result.message,
       data: {
