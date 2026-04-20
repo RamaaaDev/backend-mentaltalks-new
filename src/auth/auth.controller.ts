@@ -100,8 +100,24 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Req() req: AuthenticatedRequest) {
-    return this.authService.logout(req.user.user_id);
+  async logout(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.logout(req.user.user_id);
+
+    const cookieOptions = {
+      httpOnly: true,
+      sameSite: 'none' as const,
+      secure: true,
+      path: '/',
+      domain: '.mentaltalks.co.id',
+    };
+
+    res.clearCookie('access_token', cookieOptions);
+    res.clearCookie('refresh_token', cookieOptions);
+
+    return { message: 'Logout berhasil' };
   }
 
   /**
