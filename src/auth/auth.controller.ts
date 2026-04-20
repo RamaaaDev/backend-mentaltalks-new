@@ -47,12 +47,12 @@ export class AuthController {
   ) {
     const result = await this.authService.login(dto);
 
-    // 🔥 SET COOKIE DI SINI
     res.cookie('access_token', result.data.access_token, {
       httpOnly: true,
       sameSite: 'none',
       secure: true,
       path: '/',
+      domain: '.mentaltalks.co.id',
     });
 
     res.cookie('refresh_token', result.data.refresh_token, {
@@ -60,6 +60,7 @@ export class AuthController {
       sameSite: 'none',
       secure: true,
       path: '/',
+      domain: '.mentaltalks.co.id',
     });
     return {
       message: result.message,

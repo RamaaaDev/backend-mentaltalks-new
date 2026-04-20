@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -26,8 +26,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req) => {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        (req: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           return req?.cookies?.access_token;
         },
       ]),
@@ -37,6 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    console.log('JWT OK PAYLOAD:', payload);
     const user = await this.prisma.user.findUnique({
       where: { user_id: payload.sub },
       select: {
