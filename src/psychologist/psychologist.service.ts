@@ -16,7 +16,7 @@ import { DETAIL_SELECT } from 'src/common/constants/psychologist-detail-select.c
 
 @Injectable()
 export class PsychologistService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC — Guest & semua user bisa akses
