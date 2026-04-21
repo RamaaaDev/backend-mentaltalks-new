@@ -130,23 +130,15 @@ export class PaymentService {
   // ══════════════════════════════════════════════════════════════════════════
 
   async handleCallback(body: IpaymuCallbackBody) {
-    console.log('CALLBACK BODY:', body);
+    const { sid: orderId, trx_id: trxId, status: statusCode } = body;
 
-    const { sid, trx_id: trxId, status: statusCode } = body;
-
-    // Cari by token (sessionId) ATAU transactionId ATAU orderId sebagai fallback
-    const payment = await this.prisma.payment.findFirst({
-      where: {
-        OR: [{ token: sid }, { transactionId: trxId }, { orderId: sid }],
-      },
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderId },
     });
-
-    if (!payment) {
-      console.warn(`Payment tidak ditemukan - sid: ${sid}, trx_id: ${trxId}`);
-      return { message: 'Payment tidak ditemukan' };
-    }
+    if (!payment) return { message: 'Payment tidak ditemukan' };
 
     let status: string;
+    console.log('CALLBACK BODY:', body);
     const statusStr = (statusCode ?? '').toLowerCase();
     if (['berhasil', 'success', 'sukses'].includes(statusStr)) {
       status = 'SUCCESS';
@@ -155,12 +147,13 @@ export class PaymentService {
     } else if (statusStr === 'expired') {
       status = 'EXPIRED';
     } else {
+      // fallback: coba mapping by number (status_code)
       status = this.ipaymu.mapStatus(Number(body.status_code));
     }
 
-    // Update payment — gunakan payment.id bukan orderId dari body
+    // Update payment
     await this.prisma.payment.update({
-      where: { id: payment.id },
+      where: { orderId },
       data: {
         status,
         transactionId: trxId,
@@ -169,14 +162,18 @@ export class PaymentService {
       },
     });
 
+    // Jika sukses → update booking + buat meeting room
     if (status === 'SUCCESS' && payment.bookingId) {
       await this.prisma.bookingPsychologist.update({
         where: { booking_id: payment.bookingId },
         data: { booking_status: 'PROGRESS' },
       });
+
+      // Buat MeetingRoom otomatis
       await this.meetingService.createMeetingAfterPayment(payment.bookingId);
     }
 
+    // Jika gagal/expired → tetap PENDING, user bisa retry
     return { message: 'Callback diterima' };
   }
 

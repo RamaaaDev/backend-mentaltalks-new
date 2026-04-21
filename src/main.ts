@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
@@ -33,9 +33,7 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('api', {
-    exclude: [{ path: 'payment/callback', method: RequestMethod.POST }],
-  });
+  app.setGlobalPrefix('api');
 
   await app.listen(4000);
   console.log('Server running on http://localhost:4000/');
