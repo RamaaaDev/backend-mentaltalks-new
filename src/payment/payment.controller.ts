@@ -71,6 +71,12 @@ export class PaymentController {
    * POST /payments/callback — Webhook iPaymu (tanpa auth)
    * iPaymu akan POST ke sini setelah transaksi
    */
+}
+
+@Controller('payment')
+export class CallbackController {
+  constructor(private readonly paymentService: PaymentService) {}
+
   @Post('callback')
   @HttpCode(HttpStatus.OK)
   handleCallback(@Body() body: IpaymuCallbackBody) {
