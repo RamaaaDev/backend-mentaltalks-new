@@ -16,7 +16,7 @@ import { DETAIL_SELECT } from 'src/common/constants/psychologist-detail-select.c
 
 @Injectable()
 export class PsychologistService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC — Guest & semua user bisa akses
@@ -199,17 +199,16 @@ export class PsychologistService {
       { label: 'Q4', months: [9, 10, 11] },
     ];
 
-    // 🔥 1 query untuk chart (lebih efisien)
     const yearlyData = await this.prisma.$queryRaw<YearlyDataDto[]>`
-    SELECT 
-      QUARTER(booking_createdAt) as quarter,
-      COUNT(*) as totalBookings,
-      COUNT(DISTINCT booking_userId) as uniqueUsers
-    FROM booking_psychologist
-    WHERE booking_psychologistId = ${psyId}
-      AND YEAR(booking_createdAt) = ${currentYear}
-    GROUP BY quarter
-  `;
+  SELECT 
+    EXTRACT(QUARTER FROM "booking_createdAt") as quarter,
+    COUNT(*) as "totalBookings",
+    COUNT(DISTINCT "booking_userId") as "uniqueUsers"
+  FROM booking_psychologist
+  WHERE "booking_psychologistId" = ${psyId}
+    AND EXTRACT(YEAR FROM "booking_createdAt") = ${currentYear}
+  GROUP BY quarter
+`;
 
     // mapping ke format FE
     const chartData = quarters.map((q, i) => {
