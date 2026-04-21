@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import {
   PaymentController,
   PaymentAdminController,
-  CallbackController,
 } from './payment.controller';
 import { PaymentService } from './payment.service';
 import { IpaymuService } from './ipaymu.service';
@@ -12,7 +11,7 @@ import { MeetingModule } from '../meeting/meeting.module';
 
 @Module({
   imports: [PrismaModule, AuthModule, MeetingModule],
-  controllers: [PaymentController, PaymentAdminController, CallbackController],
+  controllers: [PaymentController, PaymentAdminController],
   providers: [PaymentService, IpaymuService],
   exports: [PaymentService],
 })
