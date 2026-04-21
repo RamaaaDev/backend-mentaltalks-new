@@ -68,7 +68,7 @@ export class PaymentService {
     const orderId = `ORD-${uuidv4().substring(0, 8).toUpperCase()}-${Date.now()}`;
     const appUrl = this.configService.get<string>(
       'APP_URL',
-      'api.mentaltalks.co.id',
+      'https://www.mentaltalks.co.id',
     );
 
     // 4. Buat payment di iPaymu
@@ -82,7 +82,7 @@ export class PaymentService {
         product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
         returnUrl: `${appUrl}/payment/return?orderId=${orderId}`,
         cancelUrl: `${appUrl}/payment/cancel?orderId=${orderId}`,
-        notifyUrl: `${appUrl}/payment/callback`,
+        notifyUrl: `https://api.mentaltalks.co.id/payment/callback`,
       });
 
     // 5. Simpan payment ke DB
