@@ -8,6 +8,7 @@ import {
   CreatePsychologistProfileDto,
   UpdatePsychologistProfileDto,
   QueryPsychologistDto,
+  YearlyDataDto,
 } from './dto/psychologist.dto';
 import { Prisma } from '@prisma/client';
 import { PSYCHOLOGIST_PUBLIC_SELECT } from 'src/common/constants/psychologist-select.constant';
@@ -185,10 +186,43 @@ export class PsychologistService {
     const psyId = profile.psychologist_id;
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentYear = now.getFullYear();
+
+    const startOfMonth = new Date(currentYear, now.getMonth(), 1);
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
 
+    const quarters = [
+      { label: 'Q1', months: [0, 1, 2] },
+      { label: 'Q2', months: [3, 4, 5] },
+      { label: 'Q3', months: [6, 7, 8] },
+      { label: 'Q4', months: [9, 10, 11] },
+    ];
+
+    // 🔥 1 query untuk chart (lebih efisien)
+    const yearlyData = await this.prisma.$queryRaw<YearlyDataDto[]>`
+    SELECT 
+      QUARTER(booking_createdAt) as quarter,
+      COUNT(*) as totalBookings,
+      COUNT(DISTINCT booking_userId) as uniqueUsers
+    FROM booking_psychologist
+    WHERE booking_psychologistId = ${psyId}
+      AND YEAR(booking_createdAt) = ${currentYear}
+    GROUP BY quarter
+  `;
+
+    // mapping ke format FE
+    const chartData = quarters.map((q, i) => {
+      const found = yearlyData.find((d) => d.quarter === i + 1);
+
+      return {
+        quarter: q.label,
+        totalBookings: found ? Number(found.totalBookings) : 0,
+        uniqueUser: found ? Number(found.uniqueUsers) : 0,
+      };
+    });
+
+    // 🔥 dashboard summary (tetap pakai Promise.all)
     const [
       totalBookings,
       bookingsThisMonth,
@@ -197,41 +231,28 @@ export class PsychologistService {
       upcomingMeetings,
       totalReviews,
       recentReviews,
-      //   totalArticles,
     ] = await Promise.all([
-      // Total semua booking
       this.prisma.bookingPsychologist.count({
         where: { booking_psychologistId: psyId },
       }),
-      // Booking bulan ini
       this.prisma.bookingPsychologist.count({
         where: {
           booking_psychologistId: psyId,
           booking_createdAt: { gte: startOfMonth },
         },
       }),
-      // Booking pending
       this.prisma.bookingPsychologist.count({
         where: {
           booking_psychologistId: psyId,
           booking_status: 'PENDING',
         },
       }),
-      // Booking selesai
       this.prisma.bookingPsychologist.count({
         where: {
           booking_psychologistId: psyId,
           booking_status: 'DONE',
         },
       }),
-      //   // Booking dibatalkan
-      //   this.prisma.bookingPsychologist.count({
-      //     where: {
-      //       booking_psychologistId: psyId,
-      //       booking_status: 'CANCELLED',
-      //     },
-      //   }),
-      // Meeting mendatang
       this.prisma.meetingRoom.findMany({
         where: {
           meeting_hostId: psyId,
@@ -249,11 +270,9 @@ export class PsychologistService {
           },
         },
       }),
-      // Total ulasan
       this.prisma.reviewsPsikolog.count({
         where: { reviewPsikolog_psychologistId: psyId },
       }),
-      // Ulasan terbaru
       this.prisma.reviewsPsikolog.findMany({
         where: { reviewPsikolog_psychologistId: psyId },
         take: 3,
@@ -268,10 +287,6 @@ export class PsychologistService {
           },
         },
       }),
-      // Total artikel
-      //   this.prisma.article.count({
-      //     where: { article_psychologistId: psyId },
-      //   }),
     ]);
 
     return {
@@ -295,9 +310,7 @@ export class PsychologistService {
           recent: recentReviews,
           averageRating: profile.psychologist_rating,
         },
-        // content: {
-        //   totalArticles,
-        // },
+        chart: chartData, // ✅ langsung siap FE
       },
     };
   }

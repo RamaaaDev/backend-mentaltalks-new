@@ -5,6 +5,7 @@ import {
   IsOptional,
   Min,
   MaxLength,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -96,4 +97,15 @@ export class QueryPsychologistDto {
   @IsOptional()
   @IsString()
   order?: 'asc' | 'desc' = 'desc';
+}
+
+export class YearlyDataDto {
+  @IsNumber()
+  quarter: number;
+
+  @IsNumber()
+  uniqueUsers: number;
+
+  @IsNumber()
+  totalBookings: number;
 }
