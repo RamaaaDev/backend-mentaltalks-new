@@ -212,7 +212,7 @@ export class PsychologistService {
 
     // mapping ke format FE
     const chartData = quarters.map((q, i) => {
-      const found = yearlyData.find((d) => d.quarter === i + 1);
+      const found = yearlyData.find((d) => Number(d.quarter) === i + 1);
 
       return {
         quarter: q.label,
