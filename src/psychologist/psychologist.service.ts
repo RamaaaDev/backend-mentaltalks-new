@@ -9,6 +9,7 @@ import {
   UpdatePsychologistProfileDto,
   QueryPsychologistDto,
   YearlyDataDto,
+  BookingWithRelationsDto,
 } from './dto/psychologist.dto';
 import { Prisma } from '@prisma/client';
 import { PSYCHOLOGIST_PUBLIC_SELECT } from 'src/common/constants/psychologist-select.constant';
@@ -259,11 +260,11 @@ export class PsychologistService {
       };
     });
 
-    // 🔥 dashboard summary (tetap pakai Promise.all)
     const [
       totalBookings,
       bookingsThisMonth,
       bookingsToday,
+      bookingsList,
       pendingBookings,
       completedBookings,
       upcomingMeetings,
@@ -279,12 +280,39 @@ export class PsychologistService {
           booking_createdAt: { gte: startOfMonth },
         },
       }),
+      // Query untuk hitung pertemuan hari ini
       this.prisma.bookingPsychologist.count({
         where: {
           booking_psychologistId: psyId,
           booking_createdAt: { gte: startOfDay, lte: endOfDay },
         },
       }),
+      // Query untuk booking list
+      this.prisma.bookingPsychologist.findMany({
+        where: { booking_psychologistId: psyId },
+        take: 10,
+        orderBy: { booking_createdAt: 'desc' },
+        select: {
+          booking_id: true,
+          booking_createdAt: true,
+          booking_type: true,
+          booking_status: true,
+          booking_schedule: {
+            select: {
+              schedule_startTime: true,
+              schedule_endTime: true,
+            },
+          },
+          booking_user: {
+            select: {
+              user_id: true,
+              user_name: true,
+              user_photos: true,
+            },
+          },
+        },
+      }),
+
       this.prisma.bookingPsychologist.count({
         where: {
           booking_psychologistId: psyId,
@@ -333,6 +361,22 @@ export class PsychologistService {
       }),
     ]);
 
+    const transformedBookingsList = (
+      bookingsList as unknown as BookingWithRelationsDto[]
+    ).map((b) => ({
+      idBooking: b.bookingId,
+      userId: b.user.userId,
+      patientName: b.user.userName,
+      patientAvatar: b.user.userPhotos,
+      date: b.schedule.startTime.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }),
+      status: b.status,
+      type: b.type,
+    }));
+
     return {
       data: {
         profile: {
@@ -341,11 +385,14 @@ export class PsychologistService {
           psychologist_ratingsCount: profile.psychologist_ratingsCount,
         },
         bookings: {
-          total: totalBookings,
-          thisMonth: bookingsThisMonth,
-          today: bookingsToday,
-          pending: pendingBookings,
-          completed: completedBookings,
+          summary: {
+            total: totalBookings,
+            thisMonth: bookingsThisMonth,
+            today: bookingsToday,
+            pending: pendingBookings,
+            completed: completedBookings,
+          },
+          appointmentList: transformedBookingsList,
         },
         meetings: {
           upcoming: upcomingMeetings,

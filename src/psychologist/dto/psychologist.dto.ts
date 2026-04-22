@@ -6,6 +6,9 @@ import {
   Min,
   MaxLength,
   IsNumber,
+  IsObject,
+  IsEnum,
+  IsDate,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -108,4 +111,50 @@ export class YearlyDataDto {
 
   @IsNumber()
   totalBookings: number;
+}
+
+export class BookingScheduleDto {
+  @IsDate()
+  @Type(() => Date)
+  startTime: Date;
+
+  @IsDate()
+  @Type(() => Date)
+  endTime: Date;
+}
+
+export class BookingUserDto {
+  @IsString()
+  userId: string;
+
+  @IsString()
+  userName: string;
+
+  @IsString()
+  @IsOptional()
+  userPhotos?: string | null;
+}
+
+export class BookingWithRelationsDto {
+  @IsString()
+  bookingId: string;
+
+  @IsDate()
+  @Type(() => Date)
+  createdAt: Date;
+
+  @IsEnum(['ONLINE', 'OFFLINE'])
+  type: 'ONLINE' | 'OFFLINE';
+
+  @IsString()
+  status: string;
+
+  @IsObject()
+  @Type(() => BookingScheduleDto)
+  schedule: BookingScheduleDto;
+
+  @IsObject()
+  @Type(() => BookingUserDto)
+  user: BookingUserDto;
+  booking_user: any;
 }
