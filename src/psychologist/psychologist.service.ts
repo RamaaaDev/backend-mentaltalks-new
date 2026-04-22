@@ -226,6 +226,39 @@ export class PsychologistService {
       };
     });
 
+    const weeklyData = await this.prisma.$queryRaw<
+      { day: string; sessions: bigint }[]
+    >`
+  SELECT
+    TO_CHAR("booking_createdAt", 'Dy') as day,
+    COUNT(*) as sessions
+  FROM booking_psychologist
+  WHERE "booking_psychologistId" = ${psyId}
+    AND "booking_createdAt" >= date_trunc('week', NOW())
+    AND "booking_createdAt" < date_trunc('week', NOW()) + INTERVAL '7 days'
+  GROUP BY
+    TO_CHAR("booking_createdAt", 'Dy'),
+    EXTRACT(DOW FROM "booking_createdAt")
+  ORDER BY
+    EXTRACT(DOW FROM "booking_createdAt")
+`;
+
+    // Mapping ke format FE dengan nama hari bahasa Indonesia
+    const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+    const weeklyChart = HARI.map((hari, index) => {
+      // DOW PostgreSQL: 0=Sunday, 1=Monday, dst
+      const found = weeklyData.find((d) => {
+        const engDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][index];
+        return d.day === engDay;
+      });
+
+      return {
+        day: hari,
+        sessions: found ? Number(found.sessions) : 0,
+      };
+    });
+
     // 🔥 dashboard summary (tetap pakai Promise.all)
     const [
       totalBookings,
@@ -322,7 +355,8 @@ export class PsychologistService {
           recent: recentReviews,
           averageRating: profile.psychologist_rating,
         },
-        chart: chartData, // ✅ langsung siap FE
+        chart: chartData,
+        weeklyChart,
       },
     };
   }
