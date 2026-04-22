@@ -366,9 +366,9 @@ export class PsychologistService {
       bookingsList as BookingWithRelations[]
     ).map((b: BookingWithRelations) => ({
       idBooking: b.booking_id,
-      userId: b.booking_user.user_id,
-      patientName: b.booking_user.user_name,
-      patientAvatar: b.booking_user.user_photos ?? null,
+      konseliId: b.booking_user.user_id,
+      konseliName: b.booking_user.user_name,
+      konseliAvatar: b.booking_user.user_photos ?? null,
       date: b.booking_schedule.schedule_startTime.toISOString().split('T')[0],
       time: b.booking_schedule.schedule_startTime.toLocaleTimeString('id-ID', {
         hour: '2-digit',
