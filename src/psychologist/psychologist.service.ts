@@ -9,7 +9,7 @@ import {
   UpdatePsychologistProfileDto,
   QueryPsychologistDto,
   YearlyDataDto,
-  BookingWithRelationsDto,
+  BookingWithRelations,
 } from './dto/psychologist.dto';
 import { Prisma } from '@prisma/client';
 import { PSYCHOLOGIST_PUBLIC_SELECT } from 'src/common/constants/psychologist-select.constant';
@@ -260,6 +260,7 @@ export class PsychologistService {
       };
     });
 
+    // 🔥 dashboard summary (tetap pakai Promise.all)
     const [
       totalBookings,
       bookingsThisMonth,
@@ -362,19 +363,20 @@ export class PsychologistService {
     ]);
 
     const transformedBookingsList = (
-      bookingsList as unknown as BookingWithRelationsDto[]
-    ).map((b) => ({
-      idBooking: b.bookingId,
-      userId: b.user.userId,
-      patientName: b.user.userName,
-      patientAvatar: b.user.userPhotos,
-      date: b.schedule.startTime.toLocaleTimeString('id-ID', {
+      bookingsList as BookingWithRelations[]
+    ).map((b: BookingWithRelations) => ({
+      idBooking: b.booking_id,
+      userId: b.booking_user.user_id,
+      patientName: b.booking_user.user_name,
+      patientAvatar: b.booking_user.user_photos ?? null,
+      date: b.booking_schedule.schedule_startTime.toISOString().split('T')[0],
+      time: b.booking_schedule.schedule_startTime.toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
       }),
-      status: b.status,
-      type: b.type,
+      status: b.booking_status,
+      type: b.booking_type,
     }));
 
     return {
