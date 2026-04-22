@@ -186,6 +186,11 @@ export class PsychologistService {
     const psyId = profile.psychologist_id;
 
     const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
     const currentYear = now.getFullYear();
 
     const startOfMonth = new Date(currentYear, now.getMonth(), 1);
@@ -225,6 +230,7 @@ export class PsychologistService {
     const [
       totalBookings,
       bookingsThisMonth,
+      bookingsToday,
       pendingBookings,
       completedBookings,
       upcomingMeetings,
@@ -238,6 +244,12 @@ export class PsychologistService {
         where: {
           booking_psychologistId: psyId,
           booking_createdAt: { gte: startOfMonth },
+        },
+      }),
+      this.prisma.bookingPsychologist.count({
+        where: {
+          booking_psychologistId: psyId,
+          booking_createdAt: { gte: startOfDay, lte: endOfDay },
         },
       }),
       this.prisma.bookingPsychologist.count({
@@ -298,6 +310,7 @@ export class PsychologistService {
         bookings: {
           total: totalBookings,
           thisMonth: bookingsThisMonth,
+          today: bookingsToday,
           pending: pendingBookings,
           completed: completedBookings,
         },
