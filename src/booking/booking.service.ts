@@ -251,6 +251,7 @@ export class BookingService {
     page = 1,
     limit = 10,
     status?: BookingStatus,
+    type?: 'CHAT' | 'ONLINE' | 'OFFLINE',
   ) {
     // Cari psychologist_id dari userId
     const profile = await this.prisma.psychologistProfile.findUnique({
@@ -265,6 +266,7 @@ export class BookingService {
       booking_psychologistId: profile.psychologist_id,
     };
     if (status) where.booking_status = status;
+    if (type) where.booking_type = type;
 
     const [data, total] = await Promise.all([
       this.prisma.bookingPsychologist.findMany({

@@ -67,6 +67,7 @@ export class BookingController {
       page,
       limit,
       query?.status,
+      query?.type,
     );
   }
 

@@ -1,4 +1,4 @@
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, MeetingType } from '@prisma/client';
 import {
   IsString,
   IsOptional,
@@ -25,6 +25,10 @@ export class QueryBookingDto {
   @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
+
+  @IsOptional()
+  @IsEnum(MeetingType)
+  type?: MeetingType;
 
   @IsOptional()
   page?: number;
