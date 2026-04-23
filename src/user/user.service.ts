@@ -59,6 +59,7 @@ export class UserService {
       },
       select: SAFE_USER_SELECT,
     });
+    console.log('DTO MASUK:', dto);
 
     return {
       message: 'Profil berhasil diperbarui',
