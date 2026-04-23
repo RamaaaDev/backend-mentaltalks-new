@@ -21,13 +21,11 @@ export class RegisterDto {
   @MaxLength(50)
   password: string;
 
-  @IsOptional()
   @IsString()
-  user_name?: string;
+  user_name: string;
 
-  @IsOptional()
   @IsEmail({}, { message: 'Format email tidak valid' })
-  user_email?: string;
+  user_email: string;
 
   @IsOptional()
   @IsString()

@@ -127,6 +127,11 @@ export class BookingService {
         });
       }
 
+      await tx.schedule.update({
+        where: { schedule_id: schedule.schedule_id },
+        data: { schedule_isBooked: true },
+      });
+
       return newBooking;
     });
 

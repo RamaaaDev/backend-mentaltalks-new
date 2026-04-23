@@ -145,6 +145,7 @@ model Schedule {
   schedule_endTime                DateTime
   schedule_locationId             String?
   schedule_price                  Int
+  schedule_isBooked               Boolean @default(false)
 
   schedule_location               LocationOffice?      @relation(fields: [schedule_locationId], references: [location_id])
   schedule_psychologistProfile    PsychologistProfile @relation(fields: [schedule_psychologistId], references: [psychologist_id])
