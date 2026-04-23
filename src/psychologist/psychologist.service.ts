@@ -39,6 +39,14 @@ export class PsychologistService {
 
     const where: Prisma.PsychologistProfileWhereInput = {
       psychologist_user: { user_isActive: true },
+
+      pscyhologist_schedule: {
+        some: {
+          schedule_startTime: {
+            gte: new Date(),
+          },
+        },
+      },
     };
 
     if (search) {
