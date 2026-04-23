@@ -174,8 +174,17 @@ export class PsychologistService {
   /**
    * Profil psikolog milik sendiri (lebih detail dari publik)
    */
+  // psychologist.service.ts
   async getMyProfile(userId: string) {
-    const profile = await this.findProfileByUserId(userId);
+    const profile = await this.prisma.psychologistProfile.findUnique({
+      where: { psychologist_userId: userId }, // ← cek by userId, bukan psychologist_id
+      select: DETAIL_SELECT,
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Profil psikolog belum dibuat'); // ← 404, bukan 500
+    }
+
     return { data: profile };
   }
 
