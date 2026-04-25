@@ -93,7 +93,7 @@ export class AuthController {
     return {
       data: {
         user_id: req.user.user_id,
-        user_name: req.user.user_name,
+        user_role: req.user.user_role,
         user_username: req.user.user_username,
       },
     };
