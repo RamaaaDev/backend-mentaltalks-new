@@ -7,7 +7,6 @@ export interface RequestUser {
   user_role: Role;
 }
 
-// Tetap butuh ini sebagai tipe di @Req()
 export interface AuthenticatedRequest extends Request {
   user: RequestUser;
 }

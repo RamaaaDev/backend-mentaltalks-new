@@ -14,7 +14,7 @@ import type { AuthenticatedRequest } from 'src/common/interface/authenticated-re
 import { UpdateUserProfileDto } from './dto/update-user.dto';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard) // Semua route butuh login
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class UserController {
   constructor(private readonly userService: UserService) {}
 

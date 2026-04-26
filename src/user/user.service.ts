@@ -15,16 +15,13 @@ export class UserService {
       where: { user_id: userId },
       select: {
         ...SAFE_USER_SELECT,
-        // Tambahkan relasi yang relevan untuk profil sendiri
         user_admin: {
           select: {
-            // sesuaikan field AdminProfile kamu
             admin_id: true,
           },
         },
         user_psychologist: {
           select: {
-            // sesuaikan field PsychologistProfile kamu
             psychologist_id: true,
           },
         },
@@ -50,7 +47,9 @@ export class UserService {
     const updated = await this.prisma.user.update({
       where: { user_id: userId },
       data: {
+        user_username: dto.user_username,
         user_name: dto.user_name,
+        user_email: dto.user_email,
         user_phone: dto.user_phone,
         user_birthday: dto.user_birthday
           ? new Date(dto.user_birthday)

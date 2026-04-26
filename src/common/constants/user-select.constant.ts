@@ -8,7 +8,5 @@ export const SAFE_USER_SELECT = {
   user_birthday: true,
   user_createdAt: true,
   user_updatedAt: true,
-  user_isActive: true,
   user_photos: true,
-  isVerified: true,
 };

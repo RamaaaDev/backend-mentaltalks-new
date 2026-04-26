@@ -214,7 +214,15 @@ export class BookingService {
       include: {
         booking_schedule: {
           include: {
-            schedule_psychologistProfile: true,
+            schedule_psychologistProfile: {
+              include: {
+                psychologist_user: {
+                  select: {
+                    user_photos: true,
+                  },
+                },
+              },
+            },
             schedule_location: true,
           },
         },
