@@ -31,9 +31,9 @@ import { ScheduleModule } from './schedule/schedule.module';
     {
       provide: APP_PIPE,
       useValue: new ValidationPipe({
-        whitelist: true, // Strip property yang tidak ada di DTO
+        whitelist: true,
         forbidNonWhitelisted: true,
-        transform: true, // Auto-transform (string → number, dll)
+        transform: true,
       }),
     },
   ],
