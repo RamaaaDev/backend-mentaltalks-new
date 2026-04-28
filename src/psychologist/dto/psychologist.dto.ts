@@ -22,6 +22,16 @@ export class CreatePsychologistProfileDto {
   @MaxLength(1000)
   psychologist_bio: string;
 
+  @IsString()
+  @MaxLength(100)
+  psychologist_sipp: string;
+
+  @IsString()
+  psychologist_location: string;
+
+  @IsInt()
+  psychologist_sessionDone: number;
+
   @IsOptional()
   @IsString()
   psychologist_quotes?: string;
@@ -46,6 +56,12 @@ export class UpdatePsychologistProfileDto {
   @IsArray()
   @IsString({ each: true })
   psychologist_education?: string[];
+
+  @IsString()
+  psychologist_location: string;
+
+  @IsInt()
+  psychologist_sessionDone: number;
 
   @IsOptional()
   @IsString()

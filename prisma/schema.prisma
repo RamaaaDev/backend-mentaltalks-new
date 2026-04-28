@@ -116,11 +116,14 @@ model AdminProfile {
 model PsychologistProfile {
   psychologist_id              String   @id @default(uuid())
   psychologist_userId          String   @unique
-  psychologist_name            String   // full name with title 
-  psychologist_education       String[] // study history
-  psychologist_bio             String   
+  psychologist_name            String  
+  psychologist_education       String[]
+  psychologist_sipp            String 
+  psychologist_location        String
+  psychologist_sessionDone     Int
+  psychologist_bio             String
   psychologist_quotes          String?
-  psychologist_specialties     String[] //for filter category
+  psychologist_specialties     String[] 
   psychologist_yearsExperience Int
   psychologist_rating          Float        @default(0)
   psychologist_ratingsCount    Int          @default(0)

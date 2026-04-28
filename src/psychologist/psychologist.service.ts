@@ -92,7 +92,7 @@ export class PsychologistService {
       select: {
         ...DETAIL_SELECT,
         psychologist_reviews: {
-          take: 5,
+          take: 3,
           orderBy: { reviewPsikolog_createdAt: 'desc' },
           select: {
             reviewPsikolog_id: true,
