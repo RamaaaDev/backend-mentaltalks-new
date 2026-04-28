@@ -12,6 +12,7 @@ import { BookingModule } from './booking/booking.module';
 import { PaymentModule } from './payment/payment.module';
 import { MeetingModule } from './meeting/meeting.module';
 import { ScheduleModule } from './schedule/schedule.module';
+import { ArticleModule } from './article/article.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ScheduleModule } from './schedule/schedule.module';
     PaymentModule,
     MeetingModule,
     ScheduleModule,
+    ArticleModule,
   ],
   providers: [
     {
