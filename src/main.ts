@@ -35,6 +35,7 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api');
+  console.log('VERSI BARU');
   app.useGlobalFilters(new HttpExceptionFilter());
 
   await app.listen(4000);
