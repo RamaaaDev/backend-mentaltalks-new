@@ -22,53 +22,71 @@ import { StringValue } from 'ms';
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private configService: ConfigService,
-    private mailService: MailService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
-  // ─── ────────────────────── REGISTER ──────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // REGISTER
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto) {
-    // Check existing username
-    const existingUser = await this.prisma.user.findUnique({
-      where: { user_username: dto.user_username },
+    // Normalize to lowercase so "JohnDoe" and "johndoe" are treated as the same identity
+    const username = dto.user_username.toLowerCase();
+    const email = dto.user_email.toLowerCase();
+
+    // ── Username uniqueness check ────────────────────────────────────────────
+    const existingByUsername = await this.prisma.user.findUnique({
+      where: { user_username: username },
     });
-    if (existingUser) {
-      if (existingUser.isVerified || existingUser.user_isActive) {
-        throw new ConflictException('Username sudah digunakan');
+
+    if (existingByUsername) {
+      if (existingByUsername.isVerified || existingByUsername.user_isActive) {
+        throw new ConflictException(
+          'Username sudah digunakan. Silakan pilih username lain.',
+        );
       }
 
-      // Kalau belum verified → kirim ulang OTP
-      if (dto.user_email && existingUser.user_email) {
+      // Username exists but account is not yet verified — resend OTP so the
+      // user can complete their previous registration attempt
+      if (existingByUsername.user_email) {
         await this.sendOtpToUser(
-          existingUser.user_id,
-          existingUser.user_email,
+          existingByUsername.user_id,
+          existingByUsername.user_email,
           'REGISTER',
         );
       }
+
+      return {
+        message:
+          'Akun dengan username ini belum diverifikasi. Kode OTP baru telah dikirim ke email Anda.',
+      };
     }
 
-    // Cek email sudah dipakai (jika diberikan)
-    if (dto.user_email) {
-      const emailUsed = await this.prisma.user.findFirst({
-        where: { user_email: dto.user_email },
-      });
-      if (emailUsed) {
-        throw new ConflictException('Email sudah digunakan');
-      }
+    // ── Email uniqueness check ───────────────────────────────────────────────
+    const existingByEmail = await this.prisma.user.findFirst({
+      where: { user_email: email },
+    });
+
+    if (existingByEmail) {
+      throw new ConflictException(
+        'Email sudah terdaftar. Silakan gunakan email lain atau masuk ke akun Anda.',
+      );
     }
 
+    // ── Create user ──────────────────────────────────────────────────────────
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const user = await this.prisma.user.create({
       data: {
-        user_username: dto.user_username,
+        user_username: username,
         user_name: dto.user_name,
-        user_email: dto.user_email,
-        user_phone: dto.user_phone,
+        user_email: email,
+        user_phone: dto.user_phone ?? null,
         user_passwordHash: passwordHash,
+        // Account is inactive until email is verified
         user_isActive: false,
         isVerified: false,
       },
@@ -83,39 +101,61 @@ export class AuthService {
       },
     });
 
-    // Kirim OTP verifikasi email jika email ada
-    if (dto.user_email) {
-      await this.sendOtpToUser(user.user_id, dto.user_email, 'REGISTER');
-    }
+    await this.sendOtpToUser(user.user_id, email, 'REGISTER');
 
     return {
-      message: 'Registrasi berhasil. Silakan verifikasi email Anda.',
-      data: user,
+      message:
+        'Pendaftaran berhasil. Silakan cek email Anda dan masukkan kode OTP untuk mengaktifkan akun.',
+      data: {
+        user_username: user.user_username,
+        user_email: user.user_email,
+      },
     };
   }
 
-  // ────────────────────── LOGIN ─────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // LOGIN
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { user_username: dto.user_username },
+    // Normalize the identifier so login is case-insensitive for both
+    // username ("JohnDoe" == "johndoe") and email ("User@Mail.com" == "user@mail.com")
+    const identifier = dto.identifier.toLowerCase().trim();
+    const isEmail = identifier.includes('@');
+
+    const user = await this.prisma.user.findFirst({
+      where: isEmail
+        ? { user_email: identifier }
+        : { user_username: identifier },
     });
 
+    // Use a generic error message to prevent user enumeration attacks
+    const invalidCredentialsError = new UnauthorizedException(
+      'Username/email atau kata sandi tidak sesuai.',
+    );
+
     if (!user || !user.user_passwordHash) {
-      throw new UnauthorizedException('Username atau password salah');
+      throw invalidCredentialsError;
     }
 
     const isPasswordValid = await bcrypt.compare(
       dto.password,
       user.user_passwordHash,
     );
+
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Username atau password salah');
+      throw invalidCredentialsError;
+    }
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException(
+        'Akun belum diverifikasi. Silakan cek email Anda dan selesaikan verifikasi OTP.',
+      );
     }
 
     if (!user.user_isActive) {
       throw new UnauthorizedException(
-        'Akun belum aktif. Silahkan melakukan registrasi ulang.',
+        'Akun Anda telah dinonaktifkan. Silakan hubungi tim dukungan kami.',
       );
     }
 
@@ -125,7 +165,8 @@ export class AuthService {
       user.user_role,
     );
 
-    // Simpan refresh token (hash) ke DB
+    // Store a hashed version of the refresh token so the raw token is never
+    // persisted in the database (defense-in-depth against DB leaks)
     const refreshTokenHash = await bcrypt.hash(tokens.refresh_token, 10);
     await this.prisma.user.update({
       where: { user_id: user.user_id },
@@ -133,7 +174,7 @@ export class AuthService {
     });
 
     return {
-      message: 'Login berhasil',
+      message: 'Selamat datang kembali!',
       data: {
         user_id: user.user_id,
         user_username: user.user_username,
@@ -144,17 +185,24 @@ export class AuthService {
     };
   }
 
-  // ─── LOGOUT ───────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // LOGOUT
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async logout(userId: string) {
+    // Invalidate the refresh token by clearing it from the database,
+    // forcing the user to log in again to obtain a new token pair
     await this.prisma.user.update({
       where: { user_id: userId },
       data: { user_refreshToken: null },
     });
-    return { message: 'Logout berhasil' };
+
+    return { message: 'Anda telah berhasil keluar.' };
   }
 
-  // ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // REFRESH TOKEN
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async refreshToken(userId: string, refreshToken: string) {
     const user = await this.prisma.user.findUnique({
@@ -162,12 +210,17 @@ export class AuthService {
     });
 
     if (!user || !user.user_refreshToken) {
-      throw new UnauthorizedException('Akses ditolak');
+      throw new UnauthorizedException(
+        'Sesi tidak valid. Silakan masuk kembali.',
+      );
     }
 
+    // Compare the incoming raw token against the stored hash
     const isMatch = await bcrypt.compare(refreshToken, user.user_refreshToken);
     if (!isMatch) {
-      throw new UnauthorizedException('Refresh token tidak valid');
+      throw new UnauthorizedException(
+        'Sesi tidak valid. Silakan masuk kembali.',
+      );
     }
 
     const tokens = await this.generateTokens(
@@ -182,74 +235,172 @@ export class AuthService {
       data: { user_refreshToken: newRefreshHash },
     });
 
-    return { message: 'Token diperbarui', data: tokens };
-  }
-
-  // ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
-
-  async forgotPassword(dto: ForgotPasswordDto) {
-    const user = await this.prisma.user.findFirst({
-      where: { user_email: dto.user_email, user_isActive: true },
-    });
-
-    // Jangan bocorkan apakah email terdaftar atau tidak
-    if (!user) {
-      return {
-        message:
-          'Kode OTP akan dikirimkan melalui email, jika email tersebut telah terdaftar.',
-      };
-    }
-
-    await this.sendOtpToUser(user.user_id, dto.user_email, 'FORGOT_PASSWORD');
-
     return {
-      message:
-        'Kode OTP akan dikirimkan melalui email, jika email tersebut telah terdaftar.',
+      message: 'Sesi berhasil diperbarui.',
+      data: tokens,
     };
   }
 
-  // ─── RESET PASSWORD ───────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FORGOT PASSWORD
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  async resetPassword(dto: ResetPasswordDto) {
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.user_email.toLowerCase().trim();
+
     const user = await this.prisma.user.findFirst({
-      where: { user_email: dto.user_email, user_isActive: true },
+      where: { user_email: email, user_isActive: true },
+    });
+
+    // Always return the same message regardless of whether the email exists.
+    // This prevents attackers from discovering registered email addresses
+    // (known as a user enumeration attack).
+    if (user) {
+      await this.sendOtpToUser(user.user_id, email, 'FORGOT_PASSWORD');
+    }
+
+    return {
+      message:
+        'Jika email tersebut terdaftar, kode OTP akan segera dikirimkan. Silakan cek inbox atau folder spam Anda.',
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // VERIFY OTP
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    const email = dto.user_email.toLowerCase().trim();
+
+    const user = await this.prisma.user.findFirst({
+      where: { user_email: email },
     });
 
     if (!user) {
-      throw new NotFoundException('User tidak ditemukan');
+      throw new NotFoundException(
+        'Akun dengan email tersebut tidak ditemukan.',
+      );
     }
 
-    // Verifikasi OTP
+    if (user.isVerified) {
+      return {
+        message: 'Akun Anda sudah aktif. Silakan langsung masuk.',
+      };
+    }
+
     const otp = await this.prisma.otp.findUnique({
       where: { otp_userId: user.user_id },
     });
 
-    if (!otp || otp.otp_code !== dto.otp_code) {
-      throw new BadRequestException('Kode OTP tidak valid');
+    // Check existence, type, expiry, and code in a consistent order
+    // to avoid leaking which specific check failed
+    if (!otp || otp.otp_type !== 'REGISTER') {
+      throw new BadRequestException(
+        'Kode OTP tidak valid. Silakan daftar ulang untuk mendapatkan kode baru.',
+      );
     }
 
     if (otp.otp_expiredAt < new Date()) {
-      throw new BadRequestException('Kode OTP sudah kedaluwarsa');
+      throw new BadRequestException(
+        'Kode OTP sudah kedaluwarsa. Silakan minta kode baru.',
+      );
     }
 
-    // Update password
-    const newHash = await bcrypt.hash(dto.new_password, 12);
-    await this.prisma.user.update({
-      where: { user_id: user.user_id },
-      data: {
-        user_passwordHash: newHash,
-        user_refreshToken: null, // invalidate semua sesi
-      },
-    });
+    if (otp.otp_code !== dto.otp_code) {
+      throw new BadRequestException(
+        'Kode OTP salah. Periksa kembali kode yang dikirim ke email Anda.',
+      );
+    }
 
-    // Hapus OTP setelah dipakai
-    await this.prisma.otp.delete({ where: { otp_userId: user.user_id } });
+    // Activate account and clean up OTP in a transaction so both operations
+    // either succeed or fail together
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { user_id: user.user_id },
+        data: { isVerified: true, user_isActive: true },
+      }),
+      this.prisma.otp.delete({
+        where: { otp_userId: user.user_id },
+      }),
+    ]);
 
-    return { message: 'Password berhasil diubah. Silakan login kembali.' };
+    return {
+      message:
+        'Akun Anda telah berhasil diaktifkan. Selamat datang di MentalTalks! Silakan masuk untuk melanjutkan.',
+    };
   }
 
-  // ─────────────────────── HELPERS ──────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RESET PASSWORD
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  async resetPassword(dto: ResetPasswordDto) {
+    const email = dto.user_email.toLowerCase().trim();
+
+    const user = await this.prisma.user.findFirst({
+      where: { user_email: email, user_isActive: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        'Akun dengan email tersebut tidak ditemukan.',
+      );
+    }
+
+    const otp = await this.prisma.otp.findUnique({
+      where: { otp_userId: user.user_id },
+    });
+
+    if (!otp || otp.otp_type !== 'FORGOT_PASSWORD') {
+      throw new BadRequestException(
+        'Kode OTP tidak valid. Silakan ulangi proses lupa kata sandi.',
+      );
+    }
+
+    if (otp.otp_expiredAt < new Date()) {
+      throw new BadRequestException(
+        'Kode OTP sudah kedaluwarsa. Silakan minta kode baru.',
+      );
+    }
+
+    if (otp.otp_code !== dto.otp_code) {
+      throw new BadRequestException(
+        'Kode OTP salah. Periksa kembali kode yang dikirim ke email Anda.',
+      );
+    }
+
+    const newHash = await bcrypt.hash(dto.new_password, 12);
+
+    // Reset password and invalidate all existing sessions in a single transaction
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { user_id: user.user_id },
+        data: {
+          user_passwordHash: newHash,
+          // Clearing the refresh token forces all active sessions to expire,
+          // ensuring old sessions cannot be used after a password change
+          user_refreshToken: null,
+        },
+      }),
+      this.prisma.otp.delete({
+        where: { otp_userId: user.user_id },
+      }),
+    ]);
+
+    return {
+      message:
+        'Kata sandi berhasil diubah. Silakan masuk menggunakan kata sandi baru Anda.',
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PRIVATE HELPERS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Generates a short-lived access token and a longer-lived refresh token.
+   * Token lifetimes are configured via environment variables.
+   */
   private async generateTokens(userId: string, username: string, role: string) {
     const payload = { sub: userId, username, role };
 
@@ -269,22 +420,22 @@ export class AuthService {
     return { access_token, refresh_token };
   }
 
+  /**
+   * Generates a 6-digit OTP, stores it (upsert) in the database, and sends it
+   * to the user's email. OTPs expire after 10 minutes.
+   */
   private async sendOtpToUser(
     userId: string,
     email: string,
     type: 'REGISTER' | 'FORGOT_PASSWORD',
   ) {
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiredAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
+    const otpCode = Math.floor(100_000 + Math.random() * 900_000).toString();
+    const expiredAt = new Date(Date.now() + 10 * 60 * 1_000); // 10 minutes
 
-    // Upsert OTP (buat baru atau update yang lama)
+    // Upsert so that requesting a new OTP always invalidates the previous one
     await this.prisma.otp.upsert({
       where: { otp_userId: userId },
-      update: {
-        otp_code: otpCode,
-        otp_expiredAt: expiredAt,
-        otp_type: type,
-      },
+      update: { otp_code: otpCode, otp_expiredAt: expiredAt, otp_type: type },
       create: {
         otp_userId: userId,
         otp_code: otpCode,
@@ -293,51 +444,6 @@ export class AuthService {
       },
     });
 
-    // Kirim email
     await this.mailService.sendOtp(email, otpCode, type);
-  }
-
-  async verifyOtp(dto: VerifyOtpDto) {
-    const user = await this.prisma.user.findFirst({
-      where: { user_email: dto.user_email },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User tidak ditemukan');
-    }
-
-    if (user.isVerified) {
-      return { message: 'Akun sudah terverifikasi, silakan login.' };
-    }
-
-    const otp = await this.prisma.otp.findUnique({
-      where: { otp_userId: user.user_id },
-    });
-
-    if (!otp || otp.otp_code !== dto.otp_code) {
-      throw new BadRequestException('Kode OTP tidak valid');
-    }
-
-    if (otp.otp_expiredAt < new Date()) {
-      throw new BadRequestException('Kode OTP sudah kedaluwarsa');
-    }
-
-    if (otp.otp_type !== 'REGISTER') {
-      throw new BadRequestException('OTP tidak valid untuk verifikasi akun');
-    }
-
-    // Aktifkan akun
-    await this.prisma.user.update({
-      where: { user_id: user.user_id },
-      data: {
-        isVerified: true,
-        user_isActive: true,
-      },
-    });
-
-    // Hapus OTP setelah dipakai
-    await this.prisma.otp.delete({ where: { otp_userId: user.user_id } });
-
-    return { message: 'Akun telah berhasil didaftarkan. Silahkan login.' };
   }
 }

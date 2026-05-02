@@ -6,25 +6,30 @@ import {
   IsOptional,
   Matches,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class RegisterDto {
   @IsString()
-  @MinLength(3)
-  @MaxLength(30)
+  @MinLength(3, { message: 'Username minimal 3 karakter.' })
+  @MaxLength(30, { message: 'Username maksimal 30 karakter.' })
   @Matches(/^[a-zA-Z0-9_]+$/, {
-    message: 'Username hanya boleh berisi huruf, angka, dan underscore',
+    message: 'Username hanya boleh berisi huruf, angka, dan underscore.',
   })
+  // Normalize on the DTO level as a safety net (service also normalizes)
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
   user_username: string;
 
   @IsString()
-  @MinLength(8)
-  @MaxLength(50)
+  @MinLength(8, { message: 'Kata sandi minimal 8 karakter.' })
+  @MaxLength(50, { message: 'Kata sandi maksimal 50 karakter.' })
   password: string;
 
   @IsString()
+  @MinLength(1, { message: 'Nama lengkap wajib diisi.' })
   user_name: string;
 
-  @IsEmail({}, { message: 'Format email tidak valid' })
+  @IsEmail({}, { message: 'Format email tidak valid.' })
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
   user_email: string;
 
   @IsOptional()
@@ -33,28 +38,35 @@ export class RegisterDto {
 }
 
 export class LoginDto {
-  @IsString()
-  user_username: string;
+  /**
+   * Accepts either a username or an email address.
+   * The service determines which one was provided by checking for "@".
+   */
+  @IsString({ message: 'Identifier wajib diisi.' })
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
+  identifier: string;
 
-  @IsString()
+  @IsString({ message: 'Kata sandi wajib diisi.' })
   password: string;
 }
 
 export class ForgotPasswordDto {
-  @IsEmail({}, { message: 'Format email tidak valid' })
+  @IsEmail({}, { message: 'Format email tidak valid.' })
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
   user_email: string;
 }
 
 export class ResetPasswordDto {
-  @IsString()
+  @IsString({ message: 'Kode OTP wajib diisi.' })
   otp_code: string;
 
-  @IsEmail({}, { message: 'Format email tidak valid' })
+  @IsEmail({}, { message: 'Format email tidak valid.' })
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
   user_email: string;
 
   @IsString()
-  @MinLength(8)
-  @MaxLength(50)
+  @MinLength(8, { message: 'Kata sandi baru minimal 8 karakter.' })
+  @MaxLength(50, { message: 'Kata sandi baru maksimal 50 karakter.' })
   new_password: string;
 }
 
@@ -64,8 +76,10 @@ export class RefreshTokenDto {
 }
 
 export class VerifyOtpDto {
-  @IsEmail()
+  @IsEmail({}, { message: 'Format email tidak valid.' })
+  @Transform(({ value }) => (value as string).toLowerCase().trim())
   user_email: string;
-  @IsString()
+
+  @IsString({ message: 'Kode OTP wajib diisi.' })
   otp_code: string;
 }

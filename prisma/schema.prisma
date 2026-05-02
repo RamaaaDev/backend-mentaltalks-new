@@ -63,7 +63,7 @@ model User {
   user_id               String    @id @default(uuid())
   user_username         String    @unique
   user_name             String?   
-  user_email            String?   
+  user_email            String?   @unique
   user_phone            String?   
   user_role             Role      @default(USER)
   user_birthday         DateTime? 
