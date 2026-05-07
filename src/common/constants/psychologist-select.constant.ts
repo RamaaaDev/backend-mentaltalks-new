@@ -1,6 +1,7 @@
 export const PSYCHOLOGIST_PUBLIC_SELECT = {
   psychologist_id: true,
   psychologist_name: true,
+  psychologist_title: true,
   psychologist_bio: true,
   psychologist_sipp: true,
   psychologist_location: true,
@@ -11,6 +12,7 @@ export const PSYCHOLOGIST_PUBLIC_SELECT = {
   psychologist_rating: true,
   psychologist_ratingsCount: true,
   psychologist_education: true,
+  psychologist_methode: true,
   psychologist_user: {
     select: {
       user_photos: true,
