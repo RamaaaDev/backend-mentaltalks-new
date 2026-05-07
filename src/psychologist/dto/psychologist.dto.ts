@@ -6,8 +6,10 @@ import {
   Min,
   MaxLength,
   IsNumber,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TitlePsychologist } from '@prisma/client';
 
 // ─── CREATE ───────────────────────────────────────────────────────────────────
 export class CreatePsychologistProfileDto {
@@ -53,7 +55,7 @@ export class UpdatePsychologistProfileDto {
   psychologist_name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEnum(TitlePsychologist)
   psychologist_title?: string;
 
   @IsOptional()
