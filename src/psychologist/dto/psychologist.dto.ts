@@ -56,7 +56,7 @@ export class UpdatePsychologistProfileDto {
 
   @IsOptional()
   @IsEnum(TitlePsychologist)
-  psychologist_title?: string;
+  psychologist_title?: TitlePsychologist;
 
   @IsOptional()
   @IsArray()
