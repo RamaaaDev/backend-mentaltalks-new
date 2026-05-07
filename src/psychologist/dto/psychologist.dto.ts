@@ -53,6 +53,10 @@ export class UpdatePsychologistProfileDto {
   psychologist_name?: string;
 
   @IsOptional()
+  @IsString()
+  psychologist_title?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   psychologist_education?: string[];
@@ -82,6 +86,11 @@ export class UpdatePsychologistProfileDto {
   @Min(0)
   @Type(() => Number)
   psychologist_yearsExperience?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString()
+  psychologist_methode?: string[];
 }
 
 // ─── QUERY / FILTER ───────────────────────────────────────────────────────────
