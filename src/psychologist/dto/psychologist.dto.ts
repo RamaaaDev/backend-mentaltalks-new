@@ -63,11 +63,13 @@ export class UpdatePsychologistProfileDto {
   @IsString({ each: true })
   psychologist_education?: string[];
 
+  @IsOptional()
   @IsString()
-  psychologist_location: string;
+  psychologist_location?: string;
 
+  @IsOptional()
   @IsInt()
-  psychologist_sessionDone: number;
+  psychologist_sessionDone?: number;
 
   @IsOptional()
   @IsString()
@@ -91,7 +93,7 @@ export class UpdatePsychologistProfileDto {
 
   @IsOptional()
   @IsArray()
-  @IsString()
+  @IsString({ each: true })
   psychologist_methode?: string[];
 }
 
