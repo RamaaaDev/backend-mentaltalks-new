@@ -5,6 +5,7 @@ import {
   MaxLength,
   IsOptional,
   Matches,
+  IsEnum,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -82,4 +83,9 @@ export class VerifyOtpDto {
 
   @IsString({ message: 'Kode OTP wajib diisi.' })
   otp_code: string;
+
+  @IsEnum(['REGISTER', 'FORGOT_PASSWORD'], {
+    message: 'Tipe OTP tidak valid.',
+  })
+  otp_type: 'REGISTER' | 'FORGOT_PASSWORD';
 }

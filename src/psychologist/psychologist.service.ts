@@ -156,8 +156,19 @@ export class PsychologistService {
     const profile = await this.prisma.psychologistProfile.create({
       data: {
         psychologist_userId: userId,
-        ...dto,
+        psychologist_name: dto.psychologist_name,
+        psychologist_title: dto.psychologist_title,
+        psychologist_education: dto.psychologist_education,
+        psychologist_bio: dto.psychologist_bio,
+        psychologist_sipp: dto.psychologist_sipp,
+        psychologist_location: dto.psychologist_location,
+        psychologist_sessionDone: dto.psychologist_sessionDone ?? 0,
+        psychologist_quotes: dto.psychologist_quotes,
+        psychologist_specialties: dto.psychologist_specialties,
+        psychologist_yearsExperience: dto.psychologist_yearsExperience,
+        psychologist_methode: dto.psychologist_methode ?? [],
       },
+
       select: DETAIL_SELECT,
     });
 

@@ -7,6 +7,7 @@ import {
   MaxLength,
   IsNumber,
   IsEnum,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TitlePsychologist } from '@prisma/client';
@@ -16,6 +17,9 @@ export class CreatePsychologistProfileDto {
   @IsString()
   psychologist_name: string;
 
+  @IsEnum(TitlePsychologist)
+  psychologist_title: TitlePsychologist;
+
   @IsArray()
   @IsString({ each: true })
   psychologist_education: string[];
@@ -24,15 +28,19 @@ export class CreatePsychologistProfileDto {
   @MaxLength(1000)
   psychologist_bio: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(100)
-  psychologist_sipp: string;
+  psychologist_sipp?: string;
 
   @IsString()
   psychologist_location: string;
 
+  @IsOptional()
   @IsInt()
-  psychologist_sessionDone: number;
+  @Min(0)
+  @Type(() => Number)
+  psychologist_sessionDone?: number;
 
   @IsOptional()
   @IsString()
@@ -46,6 +54,11 @@ export class CreatePsychologistProfileDto {
   @Min(0)
   @Type(() => Number)
   psychologist_yearsExperience: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  psychologist_methode?: string[];
 }
 
 // ─── UPDATE ───────────────────────────────────────────────────────────────────
@@ -65,16 +78,23 @@ export class UpdatePsychologistProfileDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
+  psychologist_bio?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  psychologist_sipp?: string;
+
+  @IsOptional()
+  @IsString()
   psychologist_location?: string;
 
   @IsOptional()
   @IsInt()
+  @Min(0)
+  @Type(() => Number)
   psychologist_sessionDone?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  psychologist_bio?: string;
 
   @IsOptional()
   @IsString()
@@ -111,23 +131,24 @@ export class QueryPsychologistDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  page?: number = 1;
+  page: number = 1;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  limit?: number = 10;
+  limit: number = 10;
 
   @IsOptional()
-  @IsString()
-  sortBy?: 'rating' | 'yearsExperience' | 'createdAt' = 'createdAt';
+  @IsIn(['rating', 'yearsExperience', 'createdAt'])
+  sortBy: 'rating' | 'yearsExperience' | 'createdAt' = 'createdAt';
 
   @IsOptional()
-  @IsString()
-  order?: 'asc' | 'desc' = 'desc';
+  @IsIn(['asc', 'desc'])
+  order: 'asc' | 'desc' = 'desc';
 }
 
+// ─── ANALYTICS DTO ────────────────────────────────────────────────────────────
 export class YearlyDataDto {
   @IsNumber()
   quarter: number;
@@ -139,15 +160,18 @@ export class YearlyDataDto {
   totalBookings: number;
 }
 
+// ─── TYPES ────────────────────────────────────────────────────────────────────
 export interface BookingWithRelations {
   booking_id: string;
   booking_createdAt: Date;
   booking_type: 'ONLINE' | 'OFFLINE';
   booking_status: string;
+
   booking_schedule: {
     schedule_startTime: Date;
     schedule_endTime: Date;
   };
+
   booking_user: {
     user_id: string;
     user_name: string;

@@ -282,21 +282,13 @@ export class AuthService {
       );
     }
 
-    if (user.isVerified) {
-      return {
-        message: 'Akun Anda sudah aktif. Silakan langsung masuk.',
-      };
-    }
-
     const otp = await this.prisma.otp.findUnique({
       where: { otp_userId: user.user_id },
     });
 
-    // Check existence, type, expiry, and code in a consistent order
-    // to avoid leaking which specific check failed
-    if (!otp || otp.otp_type !== 'REGISTER') {
+    if (!otp || otp.otp_type !== dto.otp_type) {
       throw new BadRequestException(
-        'Kode OTP tidak valid. Silakan daftar ulang untuk mendapatkan kode baru.',
+        'Kode OTP tidak valid. Silakan ulangi prosesnya untuk mendapatkan kode baru.',
       );
     }
 
@@ -312,21 +304,33 @@ export class AuthService {
       );
     }
 
-    // Activate account and clean up OTP in a transaction so both operations
-    // either succeed or fail together
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { user_id: user.user_id },
-        data: { isVerified: true, user_isActive: true },
-      }),
-      this.prisma.otp.delete({
-        where: { otp_userId: user.user_id },
-      }),
-    ]);
+    // Khusus REGISTER: aktifkan akun dan hapus OTP
+    if (dto.otp_type === 'REGISTER') {
+      if (user.isVerified) {
+        return { message: 'Akun Anda sudah aktif. Silakan langsung masuk.' };
+      }
 
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { user_id: user.user_id },
+          data: { isVerified: true, user_isActive: true },
+        }),
+        this.prisma.otp.delete({
+          where: { otp_userId: user.user_id },
+        }),
+      ]);
+
+      return {
+        message:
+          'Akun Anda telah berhasil diaktifkan. Selamat datang di MentalTalks! Silakan masuk untuk melanjutkan.',
+      };
+    }
+
+    // Khusus FORGOT_PASSWORD: OTP valid, tapi JANGAN hapus dulu —
+    // OTP masih dibutuhkan oleh /reset-password untuk verifikasi ulang
     return {
       message:
-        'Akun Anda telah berhasil diaktifkan. Selamat datang di MentalTalks! Silakan masuk untuk melanjutkan.',
+        'Kode OTP valid. Silakan lanjutkan untuk mengatur kata sandi baru.',
     };
   }
 

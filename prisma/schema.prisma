@@ -93,7 +93,7 @@ model User {
   couponUsages           CouponUsage[]
 
   @@index([user_role])
-  @@map("user")  //names in table database
+  @@map("user")
   notications Notication[]
 }
 
