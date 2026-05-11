@@ -18,10 +18,6 @@ import { UpdateUserProfileDto } from './dto/update-user.dto';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  /**
-   * GET /users/me
-   * Ambil profil diri sendiri — semua role bisa akses
-   */
   @Get('me')
   getMyProfile(@Req() req: AuthenticatedRequest) {
     return this.userService.getMyProfile(req.user.user_id);

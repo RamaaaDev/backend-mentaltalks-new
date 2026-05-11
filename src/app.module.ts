@@ -13,6 +13,7 @@ import { PaymentModule } from './payment/payment.module';
 import { MeetingModule } from './meeting/meeting.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { ArticleModule } from './article/article.module';
+import { LocationModule } from './location/location.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ArticleModule } from './article/article.module';
     MeetingModule,
     ScheduleModule,
     ArticleModule,
+    LocationModule,
   ],
   providers: [
     {

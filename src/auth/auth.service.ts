@@ -33,7 +33,6 @@ export class AuthService {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto) {
-    // Normalize to lowercase so "JohnDoe" and "johndoe" are treated as the same identity
     const username = dto.user_username.toLowerCase();
     const email = dto.user_email.toLowerCase();
 
