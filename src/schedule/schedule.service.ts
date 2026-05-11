@@ -94,6 +94,7 @@ export class ScheduleService {
             psychologist_user: true,
           },
         },
+        schedule_location: true,
       },
     });
 
