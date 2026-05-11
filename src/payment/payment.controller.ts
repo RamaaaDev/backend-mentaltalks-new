@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Request,
   DefaultValuePipe,
   ParseIntPipe,
   HttpCode,
@@ -18,7 +19,7 @@ import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
 import type {
   CreatePaymentDto,
-  IpaymuNotificationBody,
+  IpaymuCallbackBody,
 } from './interface/payment.interface';
 
 @Controller('payments')
@@ -54,7 +55,7 @@ export class PaymentController {
   }
 
   /**
-   * GET /payments/status/:orderId — Cek status payment (re-check ke iPaymu)
+   * GET /payments/status/:orderId — Cek status payment
    */
   @Get('status/:orderId')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -68,18 +69,16 @@ export class PaymentController {
 
   /**
    * POST /payments/callback — Webhook iPaymu (tanpa auth)
-   * iPaymu akan POST ke sini setelah setiap perubahan status transaksi.
-   * Signature diverifikasi di dalam service.
+   * iPaymu akan POST ke sini setelah transaksi
    */
   @Post('callback')
   @HttpCode(HttpStatus.OK)
-  handleCallback(@Body() body: IpaymuNotificationBody) {
+  handleCallback(@Body() body: IpaymuCallbackBody) {
     return this.paymentService.handleCallback(body);
   }
 }
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
-
 @Controller('admin/payments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')

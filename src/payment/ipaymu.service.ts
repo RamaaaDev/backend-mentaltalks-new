@@ -1,221 +1,179 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-base-to-string */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+// file baru
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import type {
-  IPaymentGateway,
-  IpaymuPaymentRequest,
-  IpaymuPaymentResponse,
-  IpaymuTransactionStatus,
-  IpaymuNotificationBody,
-  PaymentStatus,
+import axios from 'axios';
+import {
+  IpaymuCreatePaymentParams,
+  IpaymuResponse,
+  IpaymuTransactionResponse,
 } from './interface/payment.interface';
+import { AxiosError } from 'axios';
 
 @Injectable()
-export class IpaymuService implements IPaymentGateway {
+export class IpaymuService {
   private readonly logger = new Logger(IpaymuService.name);
-
-  private readonly apiKey: string;
-  private readonly va: string; // Virtual Account iPaymu (nomor merchant)
-  private readonly isProduction: boolean;
   private readonly baseUrl: string;
+  private readonly va: string;
+  private readonly apiKey: string;
 
   constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.getOrThrow<string>('IPAYMU_API_KEY');
-    this.va = this.configService.getOrThrow<string>('IPAYMU_VA');
-    this.isProduction =
-      this.configService.get<string>('IPAYMU_ENV', 'sandbox') === 'production';
-
-    this.baseUrl = this.isProduction
-      ? 'https://my.ipaymu.com/api/v2'
-      : 'https://sandbox.ipaymu.com/api/v2';
+    this.baseUrl = this.configService.get<string>(
+      'IPAYMU_BASE_URL',
+      'https://sandbox.ipaymu.com',
+    );
+    this.va = this.configService.get<string>('IPAYMU_VA', '');
+    this.apiKey = this.configService.get<string>('IPAYMU_API_KEY', '');
   }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PRIVATE HELPERS
-  // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Buat signature iPaymu:
-   * SHA256("POST" + ":" + SHA256(body) + ":" + va + ":" + api_key + ":" + timestamp)
+   * Generate signature iPaymu
+   * Format: SHA256(uppercase(method) + ":" + endpoint + ":" + lowercase(body_hash) + ":" + apiKey + ":" + timestamp)
    */
-  private buildSignature(body: unknown, timestamp: string): string {
+  private generateSignature(body: object): {
+    signature: string;
+    timestamp: string;
+  } {
+    const jsonBody = JSON.stringify(body);
+
     const bodyHash = crypto
       .createHash('sha256')
-      .update(JSON.stringify(body))
+      .update(jsonBody)
+      .digest('hex')
+      .toLowerCase();
+
+    const stringToSign = ['POST', this.va, bodyHash, this.apiKey].join(':');
+
+    const signature = crypto
+      .createHmac('sha256', this.apiKey)
+      .update(stringToSign)
       .digest('hex');
 
-    const raw = `POST:${bodyHash}:${this.va}:${this.apiKey}:${timestamp}`;
-    return crypto.createHash('sha256').update(raw).digest('hex');
-  }
-
-  private getTimestamp(): string {
-    // Format: YYYYMMDDHHmmss (WIB / Asia/Jakarta)
-    const now = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
-    );
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return (
+    // timestamp tetap dikirim (required header), tapi TIDAK masuk signature
+    const now = new Date();
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    const timestamp =
       now.getFullYear().toString() +
       pad(now.getMonth() + 1) +
       pad(now.getDate()) +
       pad(now.getHours()) +
       pad(now.getMinutes()) +
-      pad(now.getSeconds())
-    );
+      pad(now.getSeconds());
+
+    return { signature, timestamp };
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
-    const timestamp = this.getTimestamp();
-    const signature = this.buildSignature(body, timestamp);
-
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        va: this.va,
-        signature,
-        timestamp,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = (await res.json()) as T & {
-      Message?: string;
-      Status?: number;
-    };
-
-    if (!res.ok || (data as Record<string, unknown>).Status === 400) {
-      const msg = (data as Record<string, unknown>)?.Message ?? res.statusText;
-      this.logger.error(`iPaymu POST ${path} failed: ${msg}`);
-      throw new BadRequestException(`iPaymu error: ${msg}`);
-    }
-
-    return data;
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLIC: createSnapPayment (redirect payment / payment page)
-  // ──────────────────────────────────────────────────────────────────────────
-
-  async createSnapPayment(
-    params: IpaymuPaymentRequest,
-  ): Promise<IpaymuPaymentResponse> {
-    const {
-      orderId,
-      amount,
-      buyerName,
-      buyerEmail,
-      buyerPhone,
-      product,
-      returnUrl,
-      cancelUrl,
-      notifyUrl,
-    } = params;
-
-    const payload = {
-      product: [product.substring(0, 255)],
+  /**
+   * Buat payment via iPaymu redirect
+   */
+  async createRedirectPayment(params: IpaymuCreatePaymentParams): Promise<{
+    paymentUrl: string;
+    sessionId: string;
+    trxId: string;
+  }> {
+    const endpoint = '/api/v2/payment';
+    const body = {
+      account: this.va,
+      amount: params.amount,
+      buyerName: params.buyerName,
+      buyerEmail: params.buyerEmail,
+      buyerPhone: params.buyerPhone,
+      product: [params.product],
       qty: [1],
-      price: [amount],
-      amount,
-      returnUrl,
-      cancelUrl,
-      notifyUrl,
-      referenceId: orderId,
-      buyerName,
-      buyerEmail,
-      buyerPhone,
-      paymentMethod: '', // kosong = tampilkan semua metode
-      paymentChannel: '',
+      price: [params.amount],
+      returnUrl: params.returnUrl,
+      cancelUrl: params.cancelUrl,
+      notifyUrl: params.notifyUrl,
+      referenceId: params.orderId,
+      comments: `Booking konsultasi psikolog - ${params.orderId}`,
     };
 
-    const data = await this.post<{
-      Status: number;
-      Message: string;
-      Data: { SessionID: string; Url: string };
-    }>('/payment', payload);
+    const { signature, timestamp } = this.generateSignature(body);
 
-    this.logger.log(`iPaymu payment URL created for orderId=${orderId}`);
+    try {
+      const response = await axios.post(`${this.baseUrl}${endpoint}`, body, {
+        headers: {
+          'Content-Type': 'application/json',
+          va: this.va,
+          signature,
+          timestamp,
+        },
+      });
 
-    return {
-      token: data.Data.SessionID,
-      redirectUrl: data.Data.Url,
-    };
-  }
+      const data = response.data as IpaymuResponse;
+      if (data.Status !== 200) {
+        throw new Error(`iPaymu error: ${data.Message}`);
+      }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLIC: checkTransactionStatus
-  // ──────────────────────────────────────────────────────────────────────────
-
-  async checkTransactionStatus(
-    orderId: string,
-  ): Promise<IpaymuTransactionStatus> {
-    const payload = { referenceId: orderId };
-
-    const data = await this.post<{
-      Status: number;
-      Message: string;
-      Data: {
-        TransactionId: string;
-        ReferenceId: string;
-        Status: string; // status code: '1', '2', '4', dll
-        PaymentMethod: string;
+      return {
+        paymentUrl: data.Data.Url,
+        sessionId: data.Data.SessionId,
+        trxId: data.Data.TransactionId?.toString() ?? '',
       };
-    }>('/transaction', payload);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const axiosError = error as import('axios').AxiosError;
 
-    return {
-      orderId: data.Data.ReferenceId,
-      transactionId: String(data.Data.TransactionId),
-      status: this.mapStatus(data.Data.Status),
-      paymentType: data.Data.PaymentMethod ?? null,
-      raw: data.Data as Record<string, unknown>,
-    };
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLIC: mapStatus
-  // Status iPaymu: 1=Berhasil, 2=Pending, 3=Dibatalkan, 4=Kadaluarsa, 5=Refund
-  // ──────────────────────────────────────────────────────────────────────────
-
-  mapStatus(statusCode: string): PaymentStatus {
-    switch (String(statusCode)) {
-      case '1':
-        return 'SUCCESS';
-      case '2':
-        return 'PENDING';
-      case '3':
-        return 'FAILED';
-      case '4':
-        return 'EXPIRED';
-      case '5':
-        return 'REFUNDED';
-      default:
-        this.logger.warn(`Unknown iPaymu status code: ${statusCode}`);
-        return 'PENDING';
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLIC: verifySignature
-  // iPaymu webhook signature = SHA256(va + ":" + api_key + ":" + trx_id)
-  // ──────────────────────────────────────────────────────────────────────────
-
-  verifySignature(notification: IpaymuNotificationBody): boolean {
-    const raw = `${this.va}:${this.apiKey}:${notification.trx_id}`;
-    const expected = crypto.createHash('sha256').update(raw).digest('hex');
-    const isValid = expected === notification.signature;
-
-    if (!isValid) {
-      this.logger.warn(
-        `Invalid iPaymu signature for trxId=${notification.trx_id}`,
+      this.logger.error(
+        'iPaymu createPayment error',
+        axiosError.response?.data ?? err.message,
       );
+      throw error;
     }
+  }
 
-    return isValid;
+  /**
+   * Cek status transaksi by trx_id
+   */
+  async checkTransactionStatus(trxId: string): Promise<{
+    status: string;
+    statusCode: number;
+    paymentMethod: string;
+  }> {
+    const endpoint = '/api/v2/transaction';
+    const body = { account: this.va, transactionId: trxId };
+    const { signature, timestamp } = this.generateSignature(body);
+
+    try {
+      const response = await axios.post(`${this.baseUrl}${endpoint}`, body, {
+        headers: {
+          'Content-Type': 'application/json',
+          va: this.va,
+          signature,
+          timestamp,
+        },
+      });
+
+      const data = response.data as IpaymuTransactionResponse;
+      return {
+        statusCode: data.Data?.Status ?? 1,
+        status: this.mapStatus(data.Data?.Status),
+        paymentMethod: data.Data?.PaymentMethod ?? '',
+      };
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        this.logger.error('iPaymu checkStatus error', error.response?.data);
+      } else if (error instanceof Error) {
+        this.logger.error('iPaymu checkStatus error', error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Map status code iPaymu ke string
+   * 1 = pending, 2 = success, 3 = failed, 4 = expired
+   */
+  mapStatus(code: number | string): string {
+    const map: Record<string, string> = {
+      '1': 'PENDING',
+      '2': 'SUCCESS',
+      '3': 'FAILED',
+      '4': 'EXPIRED',
+    };
+    return map[String(code)] ?? 'UNKNOWN';
   }
 }

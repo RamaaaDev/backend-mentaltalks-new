@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -5,18 +6,14 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { IpaymuService } from './ipaymu.service';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { MeetingService } from '../meeting/meeting.service';
-import { NotificationReferenceType, Prisma } from '@prisma/client';
-import type {
-  IpaymuNotificationBody,
-  PaymentStatus,
-} from './interface/payment.interface';
+import { IpaymuCallbackBody } from './interface/payment.interface';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PaymentService {
@@ -77,29 +74,34 @@ export class PaymentService {
       'https://www.mentaltalks.co.id',
     );
 
-    // 4. Buat payment page di iPaymu
-    const { token, redirectUrl } = await this.ipaymu.createSnapPayment({
-      orderId,
-      amount,
-      buyerName: booking.booking_user.user_name ?? 'User',
-      buyerEmail: booking.booking_user.user_email ?? '',
-      buyerPhone: booking.booking_user.user_phone ?? '',
-      product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
-      returnUrl: `${appUrl}/payments/return?orderId=${orderId}`,
-      cancelUrl: `${appUrl}/payments/cancel?orderId=${orderId}`,
-      notifyUrl: `${appUrl}/payments/callback`,
-    });
+    // 4. Buat payment di iPaymu
+    const { paymentUrl, sessionId, trxId } =
+      await this.ipaymu.createRedirectPayment({
+        orderId,
+        amount,
+        buyerName: booking.booking_user.user_name ?? 'User',
+        buyerEmail: booking.booking_user.user_email ?? '',
+        buyerPhone: booking.booking_user.user_phone ?? '',
+        product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
+        returnUrl: `${appUrl}/payment/return?orderId=${orderId}`,
+        cancelUrl: `${appUrl}/payment/cancel?orderId=${orderId}`,
+        notifyUrl: `https://api.mentaltalks.co.id/api/payments/callback`,
+      });
 
     // 5. Simpan payment ke DB
     const payment = await this.prisma.payment.create({
       data: {
         bookingId,
         orderId,
-        token,
-        redirectUrl,
+        token: sessionId ?? '',
+        redirectUrl: paymentUrl,
         status: 'PENDING',
         grossAmount: amount,
-        meta: { sessionId: token },
+        ...(trxId && { transactionId: trxId }),
+        meta: {
+          ipaymuSessionId: sessionId,
+          ...(trxId && { trxId }),
+        },
       },
     });
 
@@ -110,7 +112,7 @@ export class PaymentService {
         notification_title: 'Pembayaran Menunggu',
         notification_body: `Selesaikan pembayaran sebesar Rp ${amount.toLocaleString('id-ID')} untuk booking konsultasi Anda.`,
         notification_type: 'PAYMENT',
-        notification_referenceId: NotificationReferenceType.BOOKINGID,
+        notification_referenceId: 'BOOKINGID',
       },
     });
 
@@ -121,55 +123,60 @@ export class PaymentService {
         paymentId: payment.id,
         orderId,
         amount,
-        sessionId: token,
-        redirectUrl,
+        redirectUrl: paymentUrl,
       },
     };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CALLBACK dari iPaymu (webhook / HTTP Notification)
+  // CALLBACK dari iPaymu (webhook)
   // ══════════════════════════════════════════════════════════════════════════
 
-  async handleCallback(body: IpaymuNotificationBody) {
-    // 1. Verifikasi signature
-    const isValid = this.ipaymu.verifySignature(body);
-    if (!isValid) {
-      throw new UnauthorizedException('Signature tidak valid');
-    }
+  async handleCallback(body: IpaymuCallbackBody) {
+    const { sid: orderId, trx_id: trxId, status: statusCode } = body;
 
-    const orderId = body.reference_id;
-
-    // 2. Cari payment
     const payment = await this.prisma.payment.findUnique({
       where: { orderId },
     });
     if (!payment) return { message: 'Payment tidak ditemukan' };
 
-    // 3. Map status (iPaymu menggunakan status_code)
-    const status: PaymentStatus = this.ipaymu.mapStatus(body.status_code);
+    let status: string;
+    console.log('CALLBACK BODY:', body);
+    const statusStr = (statusCode ?? '').toLowerCase();
+    if (['berhasil', 'success', 'sukses'].includes(statusStr)) {
+      status = 'SUCCESS';
+    } else if (statusStr === 'pending') {
+      status = 'PENDING';
+    } else if (statusStr === 'expired') {
+      status = 'EXPIRED';
+    } else {
+      // fallback: coba mapping by number (status_code)
+      status = this.ipaymu.mapStatus(Number(body.status_code));
+    }
 
-    // 4. Update payment
+    // Update payment
     await this.prisma.payment.update({
       where: { orderId },
       data: {
         status,
-        transactionId: body.trx_id,
-        paymentType: body.via ?? null,
+        transactionId: trxId,
+        paymentType: body.payment_method ?? null,
         transactionTime: new Date(),
       },
     });
 
-    // 5. Jika sukses → update booking + buat meeting room
+    // Jika sukses → update booking + buat meeting room
     if (status === 'SUCCESS' && payment.bookingId) {
       await this.prisma.bookingPsychologist.update({
         where: { booking_id: payment.bookingId },
         data: { booking_status: 'PROGRESS' },
       });
 
+      // Buat MeetingRoom otomatis
       await this.meetingService.createMeetingAfterPayment(payment.bookingId);
     }
 
+    // Jika gagal/expired → tetap PENDING, user bisa retry
     return { message: 'Callback diterima' };
   }
 
@@ -189,18 +196,14 @@ export class PaymentService {
     }
 
     // Jika masih pending → re-check ke iPaymu
-    if (payment.status === 'PENDING') {
-      const { status, transactionId, paymentType } =
-        await this.ipaymu.checkTransactionStatus(orderId);
-
+    if (payment.status === 'PENDING' && payment.transactionId) {
+      const { status } = await this.ipaymu.checkTransactionStatus(
+        payment.transactionId,
+      );
       if (status !== 'PENDING') {
         await this.prisma.payment.update({
           where: { orderId },
-          data: {
-            status,
-            ...(transactionId && { transactionId }),
-            ...(paymentType && { paymentType }),
-          },
+          data: { status },
         });
 
         if (status === 'SUCCESS' && payment.bookingId) {
@@ -219,10 +222,6 @@ export class PaymentService {
 
     return { data: payment };
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // GET MY PAYMENTS
-  // ══════════════════════════════════════════════════════════════════════════
 
   async getMyPayments(userId: string, page = 1, limit = 10) {
     const skip = (page - 1) * limit;
@@ -259,10 +258,6 @@ export class PaymentService {
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // ADMIN: GET ALL PAYMENTS
-  // ══════════════════════════════════════════════════════════════════════════
 
   async adminGetAllPayments(page = 1, limit = 10, status?: string) {
     const skip = (page - 1) * limit;
