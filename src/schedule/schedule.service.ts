@@ -29,15 +29,24 @@ export class ScheduleService {
 
   // ── PUBLIC: ambil jadwal tersedia (belum dibooking) ───────────────────────
   async findAvailable(query: QueryScheduleDto) {
-    const { page = 1, limit = 10, psychologistId, type, from, to } = query;
+    const {
+      page = 1,
+      limit = 10,
+      psychologistId,
+      type,
+      from,
+      to,
+      locationId,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ScheduleWhereInput = {
-      schedule_booking: null, // belum ada booking
-      schedule_startTime: { gte: new Date() }, // hanya jadwal mendatang
+      schedule_booking: null,
+      schedule_startTime: { gte: new Date() },
     };
 
     if (psychologistId) where.schedule_psychologistId = psychologistId;
+    if (locationId) where.schedule_locationId = locationId;
     if (type) where.schedule_type = type;
     if (from || to) {
       where.schedule_startTime = {

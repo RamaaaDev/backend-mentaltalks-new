@@ -64,6 +64,10 @@ export class QueryScheduleDto {
   type?: MeetingType;
 
   @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @IsOptional()
   @IsDateString()
   from?: string;
 
