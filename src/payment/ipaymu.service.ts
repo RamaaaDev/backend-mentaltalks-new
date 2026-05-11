@@ -36,22 +36,19 @@ export class IpaymuService {
   } {
     const jsonBody = JSON.stringify(body);
 
-    const bodyHash = crypto
-      .createHash('sha256')
-      .update(jsonBody)
-      .digest('hex')
-      .toLowerCase();
+    const bodyHash = crypto.createHash('sha256').update(jsonBody).digest('hex');
 
-    const stringToSign = ['POST', this.va, bodyHash, this.apiKey].join(':');
+    const stringToSign = `POST:${this.va}:${bodyHash}:${this.apiKey}`;
 
     const signature = crypto
-      .createHmac('sha256', this.apiKey)
+      .createHash('sha256')
       .update(stringToSign)
       .digest('hex');
 
-    // timestamp tetap dikirim (required header), tapi TIDAK masuk signature
     const now = new Date();
+
     const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+
     const timestamp =
       now.getFullYear().toString() +
       pad(now.getMonth() + 1) +
@@ -59,6 +56,9 @@ export class IpaymuService {
       pad(now.getHours()) +
       pad(now.getMinutes()) +
       pad(now.getSeconds());
+
+    console.log('STRING TO SIGN:', stringToSign);
+    console.log('SIGNATURE:', signature);
 
     return { signature, timestamp };
   }
