@@ -18,7 +18,7 @@ import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
 import type {
   CreatePaymentDto,
-  MidtransNotificationBody,
+  IpaymuNotificationBody,
 } from './interface/payment.interface';
 
 @Controller('payments')
@@ -54,7 +54,7 @@ export class PaymentController {
   }
 
   /**
-   * GET /payments/status/:orderId — Cek status payment (re-check ke Midtrans)
+   * GET /payments/status/:orderId — Cek status payment (re-check ke iPaymu)
    */
   @Get('status/:orderId')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,13 +67,13 @@ export class PaymentController {
   }
 
   /**
-   * POST /payments/callback — Webhook Midtrans (tanpa auth)
-   * Midtrans akan POST ke sini setelah setiap perubahan status transaksi.
-   * Signature key diverifikasi di dalam service.
+   * POST /payments/callback — Webhook iPaymu (tanpa auth)
+   * iPaymu akan POST ke sini setelah setiap perubahan status transaksi.
+   * Signature diverifikasi di dalam service.
    */
   @Post('callback')
   @HttpCode(HttpStatus.OK)
-  handleCallback(@Body() body: MidtransNotificationBody) {
+  handleCallback(@Body() body: IpaymuNotificationBody) {
     return this.paymentService.handleCallback(body);
   }
 }

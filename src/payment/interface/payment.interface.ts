@@ -4,9 +4,9 @@ export interface CreatePaymentDto {
   bookingId: string;
 }
 
-// ─── Midtrans Snap Request ────────────────────────────────────────────────────
+// ─── iPaymu Payment Request ───────────────────────────────────────────────────
 
-export interface MidtransSnapRequest {
+export interface IpaymuPaymentRequest {
   orderId: string;
   amount: number;
   buyerName: string;
@@ -15,46 +15,38 @@ export interface MidtransSnapRequest {
   product: string;
   returnUrl: string;
   cancelUrl: string;
+  notifyUrl: string;
 }
 
-export interface MidtransSnapResponse {
+export interface IpaymuPaymentResponse {
   token: string;
   redirectUrl: string;
 }
 
-// ─── Midtrans Transaction Status ─────────────────────────────────────────────
+// ─── iPaymu Transaction Status ────────────────────────────────────────────────
 
-export interface MidtransTransactionStatus {
+export interface IpaymuTransactionStatus {
   orderId: string;
   transactionId: string;
   status: PaymentStatus;
   paymentType: string | null;
-  fraudStatus?: string;
   raw: Record<string, unknown>;
 }
 
-// ─── Midtrans Notification (Webhook) ─────────────────────────────────────────
+// ─── iPaymu Notification (Webhook) ───────────────────────────────────────────
 
-export interface MidtransNotificationBody {
-  transaction_time: string;
-  transaction_status: string; // 'capture' | 'settlement' | 'pending' | 'deny' | 'cancel' | 'expire' | 'refund'
-  transaction_id: string;
-  status_message: string;
-  status_code: string;
-  signature_key: string;
-  payment_type: string;
-  order_id: string;
-  merchant_id: string;
-  gross_amount: string;
-  fraud_status?: string; // 'accept' | 'challenge' | 'deny'
-  currency: string;
-  // VA / bank transfer specific
-  va_numbers?: Array<{ bank: string; va_number: string }>;
-  // Card specific
-  masked_card?: string;
-  bank?: string;
-  eci?: string;
-  channel_response_message?: string;
+export interface IpaymuNotificationBody {
+  trx_id: string; // iPaymu transaction ID
+  reference_id: string; // orderId yang kita kirim (mapped ke order_id)
+  status: string; // 'berhasil' | 'pending' | 'dibatalkan' | 'kadaluarsa'
+  status_code: string; // '1' = berhasil, '2' = pending, dst
+  via: string; // metode pembayaran (bca, mandiri, qris, dll)
+  channel: string;
+  price: string; // nominal transaksi
+  buyer_name: string;
+  buyer_email: string;
+  buyer_phone: string;
+  signature: string; // SHA256(va:api_key:trx_id)
 }
 
 // ─── Payment Status Enum ──────────────────────────────────────────────────────
@@ -72,20 +64,22 @@ export interface IPaymentGateway {
   /**
    * Buat sesi pembayaran baru dan kembalikan redirect URL & token.
    */
-  createSnapPayment(params: MidtransSnapRequest): Promise<MidtransSnapResponse>;
+  createSnapPayment(
+    params: IpaymuPaymentRequest,
+  ): Promise<IpaymuPaymentResponse>;
 
   /**
-   * Cek status transaksi berdasarkan orderId atau transactionId.
+   * Cek status transaksi berdasarkan orderId.
    */
-  checkTransactionStatus(orderId: string): Promise<MidtransTransactionStatus>;
+  checkTransactionStatus(orderId: string): Promise<IpaymuTransactionStatus>;
 
   /**
-   * Map raw status string dari Midtrans ke PaymentStatus internal.
+   * Map raw status string dari iPaymu ke PaymentStatus internal.
    */
-  mapStatus(transactionStatus: string, fraudStatus?: string): PaymentStatus;
+  mapStatus(statusCode: string): PaymentStatus;
 
   /**
-   * Verifikasi signature key dari webhook Midtrans.
+   * Verifikasi signature dari webhook iPaymu.
    */
-  verifySignature(notification: MidtransNotificationBody): boolean;
+  verifySignature(notification: IpaymuNotificationBody): boolean;
 }

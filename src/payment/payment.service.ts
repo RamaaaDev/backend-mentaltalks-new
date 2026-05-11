@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
   NotFoundException,
@@ -6,13 +8,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { MidtransService } from './midtrans.service';
+import { IpaymuService } from './ipaymu.service';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { MeetingService } from '../meeting/meeting.service';
 import { NotificationReferenceType, Prisma } from '@prisma/client';
 import type {
-  MidtransNotificationBody,
+  IpaymuNotificationBody,
   PaymentStatus,
 } from './interface/payment.interface';
 
@@ -20,7 +22,7 @@ import type {
 export class PaymentService {
   constructor(
     private prisma: PrismaService,
-    private midtrans: MidtransService,
+    private ipaymu: IpaymuService,
     private configService: ConfigService,
     private meetingService: MeetingService,
   ) {}
@@ -75,8 +77,8 @@ export class PaymentService {
       'https://www.mentaltalks.co.id',
     );
 
-    // 4. Buat Snap payment di Midtrans
-    const { token, redirectUrl } = await this.midtrans.createSnapPayment({
+    // 4. Buat payment page di iPaymu
+    const { token, redirectUrl } = await this.ipaymu.createSnapPayment({
       orderId,
       amount,
       buyerName: booking.booking_user.user_name ?? 'User',
@@ -85,6 +87,7 @@ export class PaymentService {
       product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
       returnUrl: `${appUrl}/payments/return?orderId=${orderId}`,
       cancelUrl: `${appUrl}/payments/cancel?orderId=${orderId}`,
+      notifyUrl: `${appUrl}/payments/callback`,
     });
 
     // 5. Simpan payment ke DB
@@ -96,7 +99,7 @@ export class PaymentService {
         redirectUrl,
         status: 'PENDING',
         grossAmount: amount,
-        meta: { snapToken: token },
+        meta: { sessionId: token },
       },
     });
 
@@ -118,24 +121,24 @@ export class PaymentService {
         paymentId: payment.id,
         orderId,
         amount,
-        snapToken: token,
+        sessionId: token,
         redirectUrl,
       },
     };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CALLBACK dari Midtrans (webhook / HTTP Notification)
+  // CALLBACK dari iPaymu (webhook / HTTP Notification)
   // ══════════════════════════════════════════════════════════════════════════
 
-  async handleCallback(body: MidtransNotificationBody) {
-    // 1. Verifikasi signature key
-    const isValid = this.midtrans.verifySignature(body);
+  async handleCallback(body: IpaymuNotificationBody) {
+    // 1. Verifikasi signature
+    const isValid = this.ipaymu.verifySignature(body);
     if (!isValid) {
       throw new UnauthorizedException('Signature tidak valid');
     }
 
-    const orderId = body.order_id;
+    const orderId = body.reference_id;
 
     // 2. Cari payment
     const payment = await this.prisma.payment.findUnique({
@@ -143,20 +146,17 @@ export class PaymentService {
     });
     if (!payment) return { message: 'Payment tidak ditemukan' };
 
-    // 3. Map status
-    const status: PaymentStatus = this.midtrans.mapStatus(
-      body.transaction_status,
-      body.fraud_status,
-    );
+    // 3. Map status (iPaymu menggunakan status_code)
+    const status: PaymentStatus = this.ipaymu.mapStatus(body.status_code);
 
     // 4. Update payment
     await this.prisma.payment.update({
       where: { orderId },
       data: {
         status,
-        transactionId: body.transaction_id,
-        paymentType: body.payment_type ?? null,
-        transactionTime: new Date(body.transaction_time),
+        transactionId: body.trx_id,
+        paymentType: body.via ?? null,
+        transactionTime: new Date(),
       },
     });
 
@@ -188,10 +188,10 @@ export class PaymentService {
       throw new NotFoundException('Payment tidak ditemukan');
     }
 
-    // Jika masih pending → re-check ke Midtrans
+    // Jika masih pending → re-check ke iPaymu
     if (payment.status === 'PENDING') {
       const { status, transactionId, paymentType } =
-        await this.midtrans.checkTransactionStatus(orderId);
+        await this.ipaymu.checkTransactionStatus(orderId);
 
       if (status !== 'PENDING') {
         await this.prisma.payment.update({
