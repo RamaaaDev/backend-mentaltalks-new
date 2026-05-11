@@ -74,6 +74,11 @@ export class ScheduleService {
               psychologist_name: true,
               psychologist_rating: true,
               psychologist_specialties: true,
+              psychologist_user: {
+                select: {
+                  user_photos: true,
+                },
+              },
             },
           },
           schedule_location: {
