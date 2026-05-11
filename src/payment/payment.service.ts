@@ -10,7 +10,7 @@ import { MidtransService } from './midtrans.service';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { MeetingService } from '../meeting/meeting.service';
-import { Prisma } from '@prisma/client';
+import { NotificationReferenceType, Prisma } from '@prisma/client';
 import type {
   MidtransNotificationBody,
   PaymentStatus,
@@ -83,8 +83,8 @@ export class PaymentService {
       buyerEmail: booking.booking_user.user_email ?? '',
       buyerPhone: booking.booking_user.user_phone ?? '',
       product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
-      returnUrl: `${appUrl}/payment/return?orderId=${orderId}`,
-      cancelUrl: `${appUrl}/payment/cancel?orderId=${orderId}`,
+      returnUrl: `${appUrl}/payments/return?orderId=${orderId}`,
+      cancelUrl: `${appUrl}/payments/cancel?orderId=${orderId}`,
     });
 
     // 5. Simpan payment ke DB
@@ -107,8 +107,7 @@ export class PaymentService {
         notification_title: 'Pembayaran Menunggu',
         notification_body: `Selesaikan pembayaran sebesar Rp ${amount.toLocaleString('id-ID')} untuk booking konsultasi Anda.`,
         notification_type: 'PAYMENT',
-        notification_referenceId:
-          bookingId as unknown as import('@prisma/client').NotificationReferenceType,
+        notification_referenceId: NotificationReferenceType.BOOKINGID,
       },
     });
 
