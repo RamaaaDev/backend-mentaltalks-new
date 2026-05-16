@@ -185,6 +185,33 @@ export class BookingService {
     };
   }
 
+  async updateBookingStatus(
+    psychologistUserId: string,
+    bookingId: string,
+    status: BookingStatus,
+  ) {
+    const profile = await this.prisma.psychologistProfile.findUnique({
+      where: { psychologist_userId: psychologistUserId },
+      select: { psychologist_id: true },
+    });
+    if (!profile)
+      throw new NotFoundException('Profil psikolog tidak ditemukan');
+
+    const booking = await this.prisma.bookingPsychologist.findFirst({
+      where: {
+        booking_id: bookingId,
+        booking_psychologistId: profile.psychologist_id,
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking tidak ditemukan');
+
+    return this.prisma.bookingPsychologist.update({
+      where: { booking_id: bookingId },
+      data: { booking_status: status },
+      select: { booking_id: true, booking_status: true },
+    });
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // ADMIN
   // ══════════════════════════════════════════════════════════════════════════

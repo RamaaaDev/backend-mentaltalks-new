@@ -9,9 +9,10 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   Req,
+  Patch,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
-import { QueryBookingDto } from './dto/booking.dto';
+import { QueryBookingDto, UpadateBookingStatusDto } from './dto/booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
@@ -68,6 +69,20 @@ export class BookingController {
       req.user.user_id,
       id,
       req.user.user_role,
+    );
+  }
+
+  @Patch(':id/status')
+  @Roles('PSYCHOLOGIST')
+  updateBookingStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpadateBookingStatusDto,
+  ) {
+    return this.bookingService.updateBookingStatus(
+      req.user.user_id,
+      id,
+      dto.status,
     );
   }
 }
