@@ -1,7 +1,9 @@
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
-export interface CreatePaymentDto {
-  bookingId: string;
+export interface CreatePaymentIntentDto {
+  scheduleId: string;
+  couponCode?: string;
+  booking_notes?: string;
 }
 
 // ─── Midtrans Snap Request ────────────────────────────────────────────────────

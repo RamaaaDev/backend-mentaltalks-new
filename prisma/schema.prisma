@@ -296,6 +296,7 @@ model BookingPsychologist {
   booking_couponId        String?
   booking_status          BookingStatus @default(PENDING)
   booking_type            MeetingType
+  booking_finalPrice      Int?
   booking_notes           String?       // keluhan/catatan awal dari user
   booking_createdAt       DateTime      @default(now())
   booking_updatedAt       DateTime      @updatedAt

@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Body,
   Param,
   Query,
@@ -9,12 +8,10 @@ import {
   ParseUUIDPipe,
   DefaultValuePipe,
   ParseIntPipe,
-  HttpCode,
-  HttpStatus,
   Req,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
-import { CreateBookingDto, QueryBookingDto } from './dto/booking.dto';
+import { QueryBookingDto } from './dto/booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
@@ -24,17 +21,6 @@ import type { AuthenticatedRequest } from 'src/common/interface/authenticated-re
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
-
-  /** POST /bookings — User buat booking */
-  @Post()
-  @Roles('USER')
-  @HttpCode(HttpStatus.CREATED)
-  createBooking(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateBookingDto,
-  ) {
-    return this.bookingService.createBooking(req.user.user_id, dto);
-  }
 
   /** GET /bookings/me — Daftar booking milik user sendiri */
   @Get('me')

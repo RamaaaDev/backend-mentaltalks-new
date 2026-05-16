@@ -1,25 +1,5 @@
 import { BookingStatus, MeetingType } from '@prisma/client';
-import {
-  IsString,
-  IsOptional,
-  IsUUID,
-  IsEnum,
-  MaxLength,
-} from 'class-validator';
-
-export class CreateBookingDto {
-  @IsUUID()
-  scheduleId: string; // schedule yang dipilih user
-
-  @IsOptional()
-  @IsUUID()
-  couponCode?: string; // kode kupon (opsional)
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  booking_notes?: string; // keluhan awal
-}
+import { IsOptional, IsEnum } from 'class-validator';
 
 export class QueryBookingDto {
   @IsOptional()

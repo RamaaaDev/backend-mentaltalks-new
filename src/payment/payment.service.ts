@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
@@ -14,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { MeetingService } from '../meeting/meeting.service';
 import { NotificationReferenceType, Prisma } from '@prisma/client';
 import type {
+  CreatePaymentIntentDto,
   MidtransNotificationBody,
   PaymentStatus,
 } from './interface/payment.interface';
@@ -31,98 +31,132 @@ export class PaymentService {
   // CREATE PAYMENT
   // ══════════════════════════════════════════════════════════════════════════
 
-  async createPayment(userId: string, bookingId: string) {
-    // 1. Ambil booking
-    const booking = await this.prisma.bookingPsychologist.findUnique({
-      where: { booking_id: bookingId },
-      include: {
-        booking_payment: true,
-        booking_schedule: true,
-        booking_user: {
-          select: { user_name: true, user_email: true, user_phone: true },
-        },
-        booking_psychologist: { select: { psychologist_name: true } },
-        booking_coupon: true,
-      },
+  async createPaymentIntent(userId: string, dto: CreatePaymentIntentDto) {
+    // 1. Validasi schedule
+    const schedule = await this.prisma.schedule.findUnique({
+      where: { schedule_id: dto.scheduleId },
+      include: { schedule_booking: true },
     });
 
-    if (!booking) throw new NotFoundException('Booking tidak ditemukan');
-    if (booking.booking_userId !== userId)
-      throw new NotFoundException('Booking tidak ditemukan');
-    if (booking.booking_payment)
-      throw new ConflictException('Payment sudah dibuat untuk booking ini');
-    if (booking.booking_status !== 'PENDING') {
-      throw new BadRequestException('Booking tidak dalam status PENDING');
+    if (!schedule) throw new NotFoundException('Jadwal tidak ditemukan');
+    if (schedule.schedule_isBooked) {
+      throw new ConflictException('Jadwal sudah dibooking oleh user lain');
+    }
+    if (schedule.schedule_startTime < new Date()) {
+      throw new BadRequestException('Jadwal sudah terlewat');
     }
 
-    // 2. Hitung harga final (ulang dari schedule + kupon)
-    let amount = booking.booking_schedule.schedule_price;
-    if (booking.booking_coupon) {
-      const c = booking.booking_coupon;
-      if (c.coupon_type === 'PERCENTAGE') {
-        const disc = Math.floor((amount * c.coupon_value) / 100);
-        amount -= c.coupon_maxDiscount
-          ? Math.min(disc, c.coupon_maxDiscount)
-          : disc;
+    // 2. Validasi & hitung kupon (belum di-consume)
+    let finalPrice = schedule.schedule_price;
+    let couponId: string | null = null;
+
+    if (dto.couponCode) {
+      const coupon = await this.prisma.coupon.findUnique({
+        where: { coupon_code: dto.couponCode },
+      });
+
+      if (!coupon || !coupon.coupon_isActive)
+        throw new BadRequestException('Kupon tidak valid atau tidak aktif');
+      if (coupon.coupon_expiresAt < new Date())
+        throw new BadRequestException('Kupon sudah kedaluwarsa');
+      if (coupon.coupon_minPurchase && finalPrice < coupon.coupon_minPurchase)
+        throw new BadRequestException(
+          `Minimum pembelian untuk kupon ini adalah Rp ${coupon.coupon_minPurchase.toLocaleString('id-ID')}`,
+        );
+      if (
+        coupon.coupon_usageLimit &&
+        coupon.coupon_usedCount >= coupon.coupon_usageLimit
+      )
+        throw new BadRequestException('Kupon sudah mencapai batas penggunaan');
+
+      const alreadyUsed = await this.prisma.couponUsage.findUnique({
+        where: {
+          couponUsage_couponId_couponUsage_userId: {
+            couponUsage_couponId: coupon.coupon_id,
+            couponUsage_userId: userId,
+          },
+        },
+      });
+      if (alreadyUsed)
+        throw new BadRequestException(
+          'Kamu sudah pernah menggunakan kupon ini',
+        );
+
+      if (coupon.coupon_type === 'PERCENTAGE') {
+        const discount = Math.floor((finalPrice * coupon.coupon_value) / 100);
+        const maxDisc = coupon.coupon_maxDiscount ?? discount;
+        finalPrice -= Math.min(discount, maxDisc);
       } else {
-        amount -= c.coupon_value;
+        finalPrice -= coupon.coupon_value;
       }
-      amount = Math.max(amount, 0);
+
+      finalPrice = Math.max(finalPrice, 0);
+      couponId = coupon.coupon_id;
     }
 
-    // 3. Generate orderId unik
+    // 3. Ambil data user untuk Midtrans
+    const user = await this.prisma.user.findUnique({
+      where: { user_id: userId },
+      select: { user_name: true, user_email: true, user_phone: true },
+    });
+
+    const psychologist = await this.prisma.psychologistProfile.findUnique({
+      where: { psychologist_id: schedule.schedule_psychologistId },
+      select: { psychologist_name: true },
+    });
+
+    // 4. Generate orderId dan buat Snap payment
     const orderId = `ORD-${uuidv4().substring(0, 8).toUpperCase()}-${Date.now()}`;
     const appUrl = this.configService.get<string>(
       'APP_URL',
       'https://www.mentaltalks.co.id',
     );
 
-    // 4. Buat Snap payment di Midtrans
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { token, redirectUrl } = await this.midtrans.createSnapPayment({
       orderId,
-      amount,
-      buyerName: booking.booking_user.user_name ?? 'User',
-      buyerEmail: booking.booking_user.user_email ?? '',
-      buyerPhone: booking.booking_user.user_phone ?? '',
-      product: `Konsultasi dengan ${booking.booking_psychologist.psychologist_name}`,
+      amount: finalPrice,
+      buyerName: user?.user_name ?? 'User',
+      buyerEmail: user?.user_email ?? '',
+      buyerPhone: user?.user_phone ?? '',
+      product: `Konsultasi dengan ${psychologist?.psychologist_name}`,
       returnUrl: `${appUrl}/payments/return?orderId=${orderId}`,
       cancelUrl: `${appUrl}/payments/cancel?orderId=${orderId}`,
     });
 
-    // 5. Simpan payment ke DB
-    const payment = await this.prisma.payment.create({
+    // 5. Simpan payment intent ke DB
+    //    Semua konteks disimpan di sini agar webhook tidak butuh data dari client
+    await this.prisma.payment.create({
       data: {
-        bookingId,
         orderId,
         token,
         redirectUrl,
         status: 'PENDING',
-        grossAmount: amount,
-        meta: { snapToken: token },
-      },
-    });
-
-    // 6. Kirim notifikasi
-    await this.prisma.notication.create({
-      data: {
-        notification_userId: userId,
-        notification_title: 'Pembayaran Menunggu',
-        notification_body: `Selesaikan pembayaran sebesar Rp ${amount.toLocaleString('id-ID')} untuk booking konsultasi Anda.`,
-        notification_type: 'PAYMENT',
-        notification_referenceId: NotificationReferenceType.BOOKINGID,
+        grossAmount: finalPrice,
+        // Simpan konteks booking di meta — dipakai saat webhook masuk
+        meta: {
+          userId,
+          scheduleId: dto.scheduleId,
+          couponId: couponId ?? null,
+          bookingNotes: dto.booking_notes ?? null,
+          originalPrice: schedule.schedule_price,
+          finalPrice,
+          psychologistId: schedule.schedule_psychologistId,
+          scheduleType: schedule.schedule_type,
+        },
       },
     });
 
     return {
-      message:
-        'Payment berhasil dibuat. Silakan lanjutkan ke halaman pembayaran.',
+      message: 'Silakan selesaikan pembayaran.',
       data: {
-        paymentId: payment.id,
         orderId,
-        amount,
         snapToken: token,
         redirectUrl,
+        pricing: {
+          originalPrice: schedule.schedule_price,
+          finalPrice,
+          discount: schedule.schedule_price - finalPrice,
+        },
       },
     };
   }
@@ -132,29 +166,28 @@ export class PaymentService {
   // ══════════════════════════════════════════════════════════════════════════
 
   async handleCallback(body: MidtransNotificationBody) {
-    // 1. Verifikasi signature key
+    // 1. Verifikasi signature
     const isValid = this.midtrans.verifySignature(body);
-    if (!isValid) {
-      throw new UnauthorizedException('Signature tidak valid');
-    }
-
-    const orderId = body.order_id;
+    if (!isValid) throw new UnauthorizedException('Signature tidak valid');
 
     // 2. Cari payment
     const payment = await this.prisma.payment.findUnique({
-      where: { orderId },
+      where: { orderId: body.order_id },
     });
     if (!payment) return { message: 'Payment tidak ditemukan' };
 
-    // 3. Map status
+    // 3. Idempotency guard — jika sudah SUCCESS, skip
+    if (payment.status === 'SUCCESS') return { message: 'Sudah diproses' };
+
+    // 4. Map status
     const status: PaymentStatus = this.midtrans.mapStatus(
       body.transaction_status,
       body.fraud_status,
     );
 
-    // 4. Update payment
+    // 5. Update status payment
     await this.prisma.payment.update({
-      where: { orderId },
+      where: { orderId: body.order_id },
       data: {
         status,
         transactionId: body.transaction_id,
@@ -163,14 +196,99 @@ export class PaymentService {
       },
     });
 
-    // 5. Jika sukses → update booking + buat meeting room
-    if (status === 'SUCCESS' && payment.bookingId) {
-      await this.prisma.bookingPsychologist.update({
-        where: { booking_id: payment.bookingId },
-        data: { booking_status: 'PROGRESS' },
+    // 6. Jika sukses → buat booking + meeting dalam satu transaksi
+    if (status === 'SUCCESS') {
+      const meta = payment.meta as {
+        userId: string;
+        scheduleId: string;
+        couponId: string | null;
+        bookingNotes: string | null;
+        originalPrice: number;
+        finalPrice: number;
+        psychologistId: string;
+        scheduleType: string;
+      };
+
+      await this.prisma.$transaction(async (tx) => {
+        // Cek ulang schedule masih tersedia
+        const schedule = await tx.schedule.findUnique({
+          where: { schedule_id: meta.scheduleId },
+          select: { schedule_isBooked: true },
+        });
+
+        if (schedule?.schedule_isBooked) {
+          // Race condition — jadwal sudah diambil, harus refund
+          // Tandai payment sebagai REFUNDED dan trigger refund
+          await tx.payment.update({
+            where: { orderId: body.order_id },
+            data: { status: 'REFUNDED' },
+          });
+          // TODO: this.midtrans.refund(body.order_id)
+          return;
+        }
+
+        // Buat booking langsung CONFIRMED
+        const booking = await tx.bookingPsychologist.create({
+          data: {
+            booking_userId: meta.userId,
+            booking_psychologistId: meta.psychologistId,
+            booking_scheduleId: meta.scheduleId,
+            booking_couponId: meta.couponId ?? null,
+            booking_type: meta.scheduleType as any,
+            booking_notes: meta.bookingNotes ?? null,
+            booking_status: 'DONE',
+            booking_finalPrice: meta.finalPrice,
+          },
+        });
+
+        // Hubungkan payment ke booking
+        await tx.payment.update({
+          where: { orderId: body.order_id },
+          data: { bookingId: booking.booking_id },
+        });
+
+        // Lock slot
+        await tx.schedule.update({
+          where: { schedule_id: meta.scheduleId },
+          data: { schedule_isBooked: true },
+        });
+
+        // Consume kupon — baru di-increment setelah bayar sukses
+        if (meta.couponId) {
+          await tx.coupon.update({
+            where: { coupon_id: meta.couponId },
+            data: { coupon_usedCount: { increment: 1 } },
+          });
+          await tx.couponUsage.create({
+            data: {
+              couponUsage_couponId: meta.couponId,
+              couponUsage_userId: meta.userId,
+            },
+          });
+        }
+
+        // Notifikasi
+        await tx.notication.create({
+          data: {
+            notification_userId: meta.userId,
+            notification_title: 'Booking Dikonfirmasi',
+            notification_body: `Pembayaran berhasil. Booking konsultasi kamu telah dikonfirmasi.`,
+            notification_type: 'PAYMENT',
+            notification_referenceId: NotificationReferenceType.BOOKINGID,
+          },
+        });
       });
 
-      await this.meetingService.createMeetingAfterPayment(payment.bookingId);
+      // Buat meeting room setelah transaksi DB selesai
+      const updatedPayment = await this.prisma.payment.findUnique({
+        where: { orderId: body.order_id },
+        select: { bookingId: true },
+      });
+      if (updatedPayment?.bookingId) {
+        await this.meetingService.createMeetingAfterPayment(
+          updatedPayment.bookingId,
+        );
+      }
     }
 
     return { message: 'Callback diterima' };

@@ -17,7 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
 import type {
-  CreatePaymentDto,
+  CreatePaymentIntentDto,
   MidtransNotificationBody,
 } from './interface/payment.interface';
 
@@ -25,18 +25,15 @@ import type {
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
-  /**
-   * POST /payments — User buat payment untuk booking
-   */
-  @Post()
+  @Post('intent')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('USER')
   @HttpCode(HttpStatus.CREATED)
-  createPayment(
+  createPaymentIntent(
     @Req() req: AuthenticatedRequest,
-    @Body() dto: CreatePaymentDto,
+    @Body() dto: CreatePaymentIntentDto,
   ) {
-    return this.paymentService.createPayment(req.user.user_id, dto.bookingId);
+    return this.paymentService.createPaymentIntent(req.user.user_id, dto);
   }
 
   /**
