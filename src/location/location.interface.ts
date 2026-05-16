@@ -2,6 +2,7 @@ export interface ICreateLocationBody {
   location_name: string;
   location_address: string;
   location_addressDetail: string;
+  location_navigation: string | null;
   location_photos: string[];
 }
 
@@ -9,6 +10,7 @@ export interface IUpdateLocationBody {
   location_name?: string;
   location_address?: string;
   location_addressDetail?: string;
+  location_navigation?: string;
   location_photos?: string[];
 }
 
@@ -17,6 +19,7 @@ export interface ILocationData {
   location_name: string;
   location_address: string;
   location_addressDetail: string;
+  location_navigation: string | null;
   location_photos: string[];
   location_createdAt: Date;
   location_updateAt: Date;

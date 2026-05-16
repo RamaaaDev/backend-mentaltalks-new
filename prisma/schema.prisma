@@ -204,6 +204,7 @@ model LocationOffice {
   location_name          String
   location_address       String
   location_addressDetail String
+  location_navigation    String?
   location_photos        String[]
   location_createdAt     DateTime   @default(now())
   location_updateAt      DateTime   @updatedAt

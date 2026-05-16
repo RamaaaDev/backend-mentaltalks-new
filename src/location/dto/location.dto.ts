@@ -14,6 +14,10 @@ export class CreateLocationDto {
   @IsNotEmpty()
   location_addressDetail: string;
 
+  @IsString()
+  @IsOptional()
+  location_navigation?: string;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

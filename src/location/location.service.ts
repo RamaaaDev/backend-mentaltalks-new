@@ -18,6 +18,7 @@ export class LocationService {
       location_name: dto.location_name,
       location_address: dto.location_address,
       location_addressDetail: dto.location_addressDetail,
+      location_navigation: dto.location_navigation ?? null,
       location_photos: dto.location_photos ?? [],
     };
 
@@ -80,6 +81,11 @@ export class LocationService {
       ...(dto.location_addressDetail !== undefined && {
         location_addressDetail: dto.location_addressDetail,
       }),
+
+      ...(dto.location_navigation !== undefined && {
+        location_navigation: dto.location_navigation,
+      }),
+
       ...(dto.location_photos !== undefined && {
         location_photos: dto.location_photos,
       }),
