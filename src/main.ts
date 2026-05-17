@@ -35,12 +35,13 @@ async function bootstrap() {
     }),
   );
 
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+  });
+
   app.setGlobalPrefix('api');
   console.log('VERSI BARU');
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads',
-  });
 
   await app.listen(4000);
   console.log('Server running on http://localhost:4000/');

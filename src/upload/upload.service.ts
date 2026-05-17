@@ -11,8 +11,8 @@ export class UploadService {
     photoUrl: string,
   ): Promise<UpdateAvatarResponse> {
     const user = await this.prisma.user.update({
-      where: { user_id: userId }, // ✅ user_id bukan id
-      data: { user_photos: photoUrl }, // ✅ user_photos bukan avatarUrl
+      where: { user_id: userId },
+      data: { user_photos: photoUrl },
       select: { user_photos: true },
     });
 
