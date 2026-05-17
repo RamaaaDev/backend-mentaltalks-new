@@ -160,22 +160,31 @@ export class MeetingService {
     const meeting = await this.prisma.meetingRoom.findUnique({
       where: { meeting_id: meetingId },
       include: {
-        booking: { select: { booking_type: true } },
+        booking: {
+          include: {
+            booking_schedule: true,
+          },
+        },
         host: { select: { psychologist_userId: true } },
       },
     });
 
     if (!meeting) throw new NotFoundException('Meeting tidak ditemukan');
 
+    // 🔐 ACCESS CONTROL
     const isParticipant = meeting.meeting_participantId === userId;
     const isHost = meeting.host.psychologist_userId === userId;
-    if (!isParticipant && !isHost)
-      throw new ForbiddenException('Akses ditolak');
 
+    if (!isParticipant && !isHost) {
+      throw new ForbiddenException('Akses ditolak');
+    }
+
+    // 🔐 VALIDASI TIPE
     if (meeting.booking.booking_type !== 'ONLINE') {
       throw new BadRequestException('Sesi ini bukan tipe online');
     }
 
+    // 🔐 VALIDASI STATUS MEETING
     if (
       meeting.meeting_status === 'ENDED' ||
       meeting.meeting_status === 'CANCELED'
@@ -183,14 +192,39 @@ export class MeetingService {
       throw new BadRequestException('Sesi sudah berakhir atau dibatalkan');
     }
 
-    // Update status ke LIVE jika host yang join dan masih SCHEDULED
+    // 🔥 VALIDASI STATUS BOOKING
+    const booking = meeting.booking;
+    const schedule = booking.booking_schedule;
+
+    if (booking.booking_status !== 'PROGRESS') {
+      throw new ForbiddenException('Sesi belum aktif (booking belum PROGRESS)');
+    }
+
+    // ⏱ VALIDASI WAKTU SESI
+    const now = new Date();
+    const start = new Date(schedule.schedule_startTime);
+    const end = new Date(schedule.schedule_endTime);
+
+    if (now < start) {
+      throw new ForbiddenException('Sesi belum dimulai');
+    }
+
+    if (now > end) {
+      throw new ForbiddenException('Sesi sudah berakhir');
+    }
+
+    // 🚀 UPDATE STATUS LIVE (host only)
     if (isHost && meeting.meeting_status === 'SCHEDULED') {
       await this.prisma.meetingRoom.update({
         where: { meeting_id: meetingId },
-        data: { meeting_status: 'LIVE', meeting_startedAt: new Date() },
+        data: {
+          meeting_status: 'LIVE',
+          meeting_startedAt: new Date(),
+        },
       });
     }
 
+    // 🎟 STREAM TOKEN
     const token = this.streamService.generateUserToken(userId);
 
     return {
