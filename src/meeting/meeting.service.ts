@@ -194,26 +194,12 @@ export class MeetingService {
 
     // 🔥 VALIDASI STATUS BOOKING
     const booking = meeting.booking;
-    const schedule = booking.booking_schedule;
 
     if (booking.booking_status !== 'PROGRESS') {
-      throw new ForbiddenException('Sesi belum aktif (booking belum PROGRESS)');
-    }
-
-    // ⏱ VALIDASI WAKTU SESI
-    const now = new Date();
-    const start = new Date(schedule.schedule_startTime);
-    const end = new Date(schedule.schedule_endTime);
-
-    if (now < start) {
       throw new ForbiddenException('Sesi belum dimulai');
     }
 
-    if (now > end) {
-      throw new ForbiddenException('Sesi sudah berakhir');
-    }
-
-    // 🚀 UPDATE STATUS LIVE (host only)
+    // UPDATE STATUS LIVE (host only)
     if (isHost && meeting.meeting_status === 'SCHEDULED') {
       await this.prisma.meetingRoom.update({
         where: { meeting_id: meetingId },
