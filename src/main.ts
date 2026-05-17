@@ -3,9 +3,11 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.use(cookieParser());
 
@@ -16,7 +18,6 @@ async function bootstrap() {
       'http://localhost:3000',
     ],
     credentials: true,
-
     allowedHeaders: [
       'Content-Type',
       'Authorization',
@@ -37,6 +38,9 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   console.log('VERSI BARU');
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
 
   await app.listen(4000);
   console.log('Server running on http://localhost:4000/');
