@@ -13,13 +13,11 @@ import {
   Req,
 } from '@nestjs/common';
 import { PaymentService } from './payment.service';
+import type { AdminConfirmPaymentDto } from './payment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
-import type {
-  CreatePaymentIntentDto,
-  MidtransNotificationBody,
-} from './interface/payment.interface';
+import type { CreatePaymentIntentDto } from './interface/payment.interface';
 
 @Controller('payments')
 export class PaymentController {
@@ -51,7 +49,8 @@ export class PaymentController {
   }
 
   /**
-   * GET /payments/status/:orderId — Cek status payment (re-check ke Midtrans)
+   * GET /payments/status/:orderId — Cek status payment dari DB
+   * (QRIS statis: tidak re-check ke gateway, status ditentukan admin)
    */
   @Get('status/:orderId')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -64,13 +63,21 @@ export class PaymentController {
   }
 
   /**
-   * POST /payments/callback — Webhook Midtrans (tanpa auth)
-   * Midtrans akan POST ke sini setelah setiap perubahan status transaksi.
-   * Signature key diverifikasi di dalam service.
+   * POST /payments/callback — Konfirmasi pembayaran QRIS oleh ADMIN
+   *
+   * Endpoint ini dulunya adalah webhook Midtrans (tanpa auth).
+   * Sekarang hanya bisa diakses oleh admin yang sudah login.
+   *
+   * Body:
+   *  - orderId: string          → order yang dikonfirmasi
+   *  - referenceNumber: string  → nomor referensi dari user / mutasi rekening
+   *  - transactionStatus: 'success' | 'failed'
    */
   @Post('callback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
-  handleCallback(@Body() body: MidtransNotificationBody) {
+  handleCallback(@Body() body: AdminConfirmPaymentDto) {
     return this.paymentService.handleCallback(body);
   }
 }

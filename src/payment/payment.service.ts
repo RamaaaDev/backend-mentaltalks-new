@@ -4,26 +4,28 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { MidtransService } from './midtrans.service';
+import { QrisService } from './qris.service';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { MeetingService } from '../meeting/meeting.service';
 import { NotificationReferenceType, Prisma } from '@prisma/client';
 import type {
   CreatePaymentIntentDto,
-  MidtransNotificationBody,
+  AdminConfirmPaymentDto,
   PaymentStatus,
+  PaymentMeta,
 } from './interface/payment.interface';
+
+export type { AdminConfirmPaymentDto };
 
 @Injectable()
 export class PaymentService {
   constructor(
     private prisma: PrismaService,
-    private midtrans: MidtransService,
-    private configService: ConfigService,
+    private midtrans: QrisService, // nama field sengaja dibiarkan 'midtrans'
+    private configService: ConfigService, // agar tidak ada breaking change di sini
     private meetingService: MeetingService,
   ) {}
 
@@ -94,7 +96,7 @@ export class PaymentService {
       couponId = coupon.coupon_id;
     }
 
-    // 3. Ambil data user untuk Midtrans
+    // 3. Ambil data user & psikolog
     const user = await this.prisma.user.findUnique({
       where: { user_id: userId },
       select: { user_name: true, user_email: true, user_phone: true },
@@ -105,34 +107,26 @@ export class PaymentService {
       select: { psychologist_name: true },
     });
 
-    // 4. Generate orderId dan buat Snap payment
+    // 4. Generate orderId & ambil info QRIS
     const orderId = `ORD-${uuidv4().substring(0, 8).toUpperCase()}-${Date.now()}`;
-    const appUrl = this.configService.get<string>(
-      'APP_URL',
-      'https://www.mentaltalks.co.id',
-    );
 
-    const { token, redirectUrl } = await this.midtrans.createSnapPayment({
+    const { token, qrisImageUrl } = this.midtrans.createSnapPayment({
       orderId,
       amount: finalPrice,
       buyerName: user?.user_name ?? 'User',
       buyerEmail: user?.user_email ?? '',
       buyerPhone: user?.user_phone ?? '',
       product: `Konsultasi dengan ${psychologist?.psychologist_name}`,
-      returnUrl: `${appUrl}/payments/return?orderId=${orderId}`,
-      cancelUrl: `${appUrl}/payments/cancel?orderId=${orderId}`,
     });
 
     // 5. Simpan payment intent ke DB
-    //    Semua konteks disimpan di sini agar webhook tidak butuh data dari client
     await this.prisma.payment.create({
       data: {
         orderId,
         token,
-        redirectUrl,
+        redirectUrl: '', // tidak dipakai untuk QRIS statis
         status: 'PENDING',
         grossAmount: finalPrice,
-        // Simpan konteks booking di meta — dipakai saat webhook masuk
         meta: {
           userId,
           scheduleId: dto.scheduleId,
@@ -147,83 +141,86 @@ export class PaymentService {
     });
 
     return {
-      message: 'Silakan selesaikan pembayaran.',
+      message: 'Silakan selesaikan pembayaran via QRIS.',
       data: {
         orderId,
+        /**
+         * snapToken diisi orderId agar response shape tidak berubah
+         * bagi frontend yang sudah consume field ini.
+         */
         snapToken: token,
-        redirectUrl,
+        /**
+         * URL gambar barcode QRIS statis — tampilkan ke user.
+         */
+        qrisImageUrl,
         pricing: {
           originalPrice: schedule.schedule_price,
           finalPrice,
           discount: schedule.schedule_price - finalPrice,
         },
+        /**
+         * Instruksi untuk user
+         */
+        paymentInstructions: [
+          `Transfer sebesar Rp ${finalPrice.toLocaleString('id-ID')} via QRIS di atas.`,
+          'Simpan nomor referensi transaksi dari aplikasi bank / e-wallet kamu.',
+          `Masukkan nomor referensi tersebut ke aplikasi dengan orderId: ${orderId}.`,
+          'Tunggu konfirmasi dari admin (biasanya dalam 1×24 jam kerja).',
+        ],
       },
     };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CALLBACK dari Midtrans (webhook / HTTP Notification)
+  // KONFIRMASI ADMIN (menggantikan webhook Midtrans)
+  // Endpoint: POST /payments/callback
+  // Guard: hanya ADMIN yang bisa akses (diatur di controller)
   // ══════════════════════════════════════════════════════════════════════════
 
-  async handleCallback(body: MidtransNotificationBody) {
-    // 1. Verifikasi signature
-    const isValid = this.midtrans.verifySignature(body);
-    if (!isValid) throw new UnauthorizedException('Signature tidak valid');
-
-    // 2. Cari payment
+  async handleCallback(body: AdminConfirmPaymentDto) {
+    // 1. Cari payment
     const payment = await this.prisma.payment.findUnique({
-      where: { orderId: body.order_id },
+      where: { orderId: body.orderId },
     });
-    if (!payment) return { message: 'Payment tidak ditemukan' };
+    if (!payment) throw new NotFoundException('Payment tidak ditemukan');
 
-    // 3. Idempotency guard — jika sudah SUCCESS, skip
-    if (payment.status === 'SUCCESS') return { message: 'Sudah diproses' };
+    // 2. Idempotency guard
+    if (payment.status === 'SUCCESS') {
+      return { message: 'Payment sudah dikonfirmasi sebelumnya' };
+    }
 
-    // 4. Map status
+    // 3. Map status berdasarkan keputusan admin
     const status: PaymentStatus = this.midtrans.mapStatus(
-      body.transaction_status,
-      body.fraud_status,
+      body.transactionStatus,
     );
 
-    // 5. Update status payment
+    // 4. Update status payment + simpan nomor referensi di transactionId
     await this.prisma.payment.update({
-      where: { orderId: body.order_id },
+      where: { orderId: body.orderId },
       data: {
         status,
-        transactionId: body.transaction_id,
-        paymentType: body.payment_type ?? null,
-        transactionTime: new Date(body.transaction_time),
+        transactionId: body.referenceNumber,
+        paymentType: 'qris',
+        transactionTime: new Date(),
       },
     });
 
-    // 6. Jika sukses → buat booking + meeting dalam satu transaksi
+    // 5. Jika dikonfirmasi sukses → buat booking + meeting
     if (status === 'SUCCESS') {
-      const meta = payment.meta as {
-        userId: string;
-        scheduleId: string;
-        couponId: string | null;
-        bookingNotes: string | null;
-        originalPrice: number;
-        finalPrice: number;
-        psychologistId: string;
-        scheduleType: string;
-      };
+      const meta = payment.meta as unknown as PaymentMeta;
 
       await this.prisma.$transaction(async (tx) => {
-        // Cek ulang schedule masih tersedia
+        // Cek ulang schedule masih tersedia (race condition guard)
         const schedule = await tx.schedule.findUnique({
           where: { schedule_id: meta.scheduleId },
           select: { schedule_isBooked: true },
         });
 
         if (schedule?.schedule_isBooked) {
-          // Race condition — jadwal sudah diambil, harus refund
-          // Tandai payment sebagai REFUNDED dan trigger refund
           await tx.payment.update({
-            where: { orderId: body.order_id },
+            where: { orderId: body.orderId },
             data: { status: 'REFUNDED' },
           });
-          // TODO: this.midtrans.refund(body.order_id)
           return;
         }
 
@@ -243,7 +240,7 @@ export class PaymentService {
 
         // Hubungkan payment ke booking
         await tx.payment.update({
-          where: { orderId: body.order_id },
+          where: { orderId: body.orderId },
           data: { bookingId: booking.booking_id },
         });
 
@@ -253,7 +250,7 @@ export class PaymentService {
           data: { schedule_isBooked: true },
         });
 
-        // Consume kupon — baru di-increment setelah bayar sukses
+        // Consume kupon
         if (meta.couponId) {
           await tx.coupon.update({
             where: { coupon_id: meta.couponId },
@@ -267,12 +264,12 @@ export class PaymentService {
           });
         }
 
-        // Notifikasi
+        // Notifikasi ke user
         await tx.notication.create({
           data: {
             notification_userId: meta.userId,
             notification_title: 'Booking Dikonfirmasi',
-            notification_body: `Pembayaran berhasil. Booking konsultasi kamu telah dikonfirmasi.`,
+            notification_body: `Pembayaran QRIS kamu telah dikonfirmasi. Booking konsultasi berhasil.`,
             notification_type: 'PAYMENT',
             notification_referenceId: NotificationReferenceType.BOOKINGID,
           },
@@ -281,7 +278,7 @@ export class PaymentService {
 
       // Buat meeting room setelah transaksi DB selesai
       const updatedPayment = await this.prisma.payment.findUnique({
-        where: { orderId: body.order_id },
+        where: { orderId: body.orderId },
         select: { bookingId: true },
       });
       if (updatedPayment?.bookingId) {
@@ -291,7 +288,7 @@ export class PaymentService {
       }
     }
 
-    return { message: 'Callback diterima' };
+    return { message: 'Konfirmasi pembayaran berhasil diproses' };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -309,35 +306,8 @@ export class PaymentService {
       throw new NotFoundException('Payment tidak ditemukan');
     }
 
-    // Jika masih pending → re-check ke Midtrans
-    if (payment.status === 'PENDING') {
-      const { status, transactionId, paymentType } =
-        await this.midtrans.checkTransactionStatus(orderId);
-
-      if (status !== 'PENDING') {
-        await this.prisma.payment.update({
-          where: { orderId },
-          data: {
-            status,
-            ...(transactionId && { transactionId }),
-            ...(paymentType && { paymentType }),
-          },
-        });
-
-        if (status === 'SUCCESS' && payment.bookingId) {
-          await this.prisma.bookingPsychologist.update({
-            where: { booking_id: payment.bookingId },
-            data: { booking_status: 'PROGRESS' },
-          });
-          await this.meetingService.createMeetingAfterPayment(
-            payment.bookingId,
-          );
-        }
-
-        payment.status = status;
-      }
-    }
-
+    // Untuk QRIS statis tidak ada re-check ke gateway — status ditentukan admin.
+    // Cukup kembalikan status saat ini dari DB.
     return { data: payment };
   }
 

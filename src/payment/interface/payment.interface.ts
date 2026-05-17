@@ -1,65 +1,6 @@
-// ─── DTOs ────────────────────────────────────────────────────────────────────
-
-export interface CreatePaymentIntentDto {
-  scheduleId: string;
-  couponCode?: string;
-  booking_notes?: string;
-}
-
-// ─── Midtrans Snap Request ────────────────────────────────────────────────────
-
-export interface MidtransSnapRequest {
-  orderId: string;
-  amount: number;
-  buyerName: string;
-  buyerEmail: string;
-  buyerPhone: string;
-  product: string;
-  returnUrl: string;
-  cancelUrl: string;
-}
-
-export interface MidtransSnapResponse {
-  token: string;
-  redirectUrl: string;
-}
-
-// ─── Midtrans Transaction Status ─────────────────────────────────────────────
-
-export interface MidtransTransactionStatus {
-  orderId: string;
-  transactionId: string;
-  status: PaymentStatus;
-  paymentType: string | null;
-  fraudStatus?: string;
-  raw: Record<string, unknown>;
-}
-
-// ─── Midtrans Notification (Webhook) ─────────────────────────────────────────
-
-export interface MidtransNotificationBody {
-  transaction_time: string;
-  transaction_status: string; // 'capture' | 'settlement' | 'pending' | 'deny' | 'cancel' | 'expire' | 'refund'
-  transaction_id: string;
-  status_message: string;
-  status_code: string;
-  signature_key: string;
-  payment_type: string;
-  order_id: string;
-  merchant_id: string;
-  gross_amount: string;
-  fraud_status?: string; // 'accept' | 'challenge' | 'deny'
-  currency: string;
-  // VA / bank transfer specific
-  va_numbers?: Array<{ bank: string; va_number: string }>;
-  // Card specific
-  masked_card?: string;
-  bank?: string;
-  eci?: string;
-  channel_response_message?: string;
-}
-
-// ─── Payment Status Enum ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// PAYMENT STATUS
+// ══════════════════════════════════════════════════════════════════════════
 
 export type PaymentStatus =
   | 'PENDING'
@@ -68,26 +9,165 @@ export type PaymentStatus =
   | 'EXPIRED'
   | 'REFUNDED';
 
-// ─── Payment Gateway Interface (abstraksi) ────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// CREATE PAYMENT INTENT
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface CreatePaymentIntentDto {
+  scheduleId: string;
+  couponCode?: string;
+  booking_notes?: string;
+}
+
+export interface PaymentPricing {
+  originalPrice: number;
+  finalPrice: number;
+  discount: number;
+}
+
+export interface CreatePaymentIntentResponse {
+  message: string;
+  data: {
+    orderId: string;
+    /** Diisi orderId untuk backward-compat dengan frontend yang sudah pakai field ini */
+    snapToken: string;
+    /** URL gambar barcode QRIS statis — tampilkan ke user */
+    qrisImageUrl: string;
+    pricing: PaymentPricing;
+    /** Instruksi langkah-langkah pembayaran untuk ditampilkan ke user */
+    paymentInstructions: string[];
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QRIS SERVICE — request & response
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface QrisPaymentRequest {
+  orderId: string;
+  amount: number;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhone: string;
+  product: string;
+}
+
+export interface QrisPaymentResponse {
+  /** Sama dengan orderId — dipakai sebagai token agar shape DB tidak berubah */
+  token: string;
+  /** Kosong untuk QRIS statis */
+  redirectUrl: string;
+  /** URL gambar barcode QRIS */
+  qrisImageUrl: string;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADMIN CONFIRM PAYMENT (menggantikan MidtransNotificationBody)
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface AdminConfirmPaymentDto {
+  /** Order ID yang dikonfirmasi */
+  orderId: string;
+  /** Nomor referensi dari user / mutasi rekening admin */
+  referenceNumber: string;
+  /** Keputusan admin */
+  transactionStatus: 'success' | 'failed';
+}
+
+export interface AdminConfirmPaymentResponse {
+  message: string;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CHECK PAYMENT STATUS
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface PaymentRecord {
+  orderId: string;
+  token: string;
+  redirectUrl: string;
+  status: PaymentStatus;
+  grossAmount: number;
+  transactionId: string | null;
+  paymentType: string | null;
+  transactionTime: Date | null;
+  bookingId: string | null;
+  meta: PaymentMeta;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PaymentMeta {
+  userId: string;
+  scheduleId: string;
+  couponId: string | null;
+  bookingNotes: string | null;
+  originalPrice: number;
+  finalPrice: number;
+  psychologistId: string;
+  scheduleType: string;
+}
+
+export interface CheckPaymentStatusResponse {
+  data: PaymentRecord;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GET MY PAYMENTS (paginated)
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface PaymentListItem extends PaymentRecord {
+  booking: {
+    booking_type: string;
+    booking_schedule: {
+      schedule_startTime: Date;
+      schedule_psychologistProfile: {
+        psychologist_name: string;
+      };
+    };
+  } | null;
+}
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface GetMyPaymentsResponse {
+  data: PaymentListItem[];
+  meta: PaginationMeta;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADMIN: GET ALL PAYMENTS (paginated)
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface AdminPaymentListItem extends PaymentRecord {
+  booking: {
+    booking_user: {
+      user_name: string;
+      user_email: string;
+    };
+    booking_psychologist: {
+      psychologist_name: string;
+    };
+  } | null;
+}
+
+export interface AdminGetAllPaymentsResponse {
+  data: AdminPaymentListItem[];
+  meta: PaginationMeta;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GATEWAY INTERFACE
+// Implementasi: QrisService
+// ══════════════════════════════════════════════════════════════════════════
 
 export interface IPaymentGateway {
-  /**
-   * Buat sesi pembayaran baru dan kembalikan redirect URL & token.
-   */
-  createSnapPayment(params: MidtransSnapRequest): Promise<MidtransSnapResponse>;
-
-  /**
-   * Cek status transaksi berdasarkan orderId atau transactionId.
-   */
-  checkTransactionStatus(orderId: string): Promise<MidtransTransactionStatus>;
-
-  /**
-   * Map raw status string dari Midtrans ke PaymentStatus internal.
-   */
-  mapStatus(transactionStatus: string, fraudStatus?: string): PaymentStatus;
-
-  /**
-   * Verifikasi signature key dari webhook Midtrans.
-   */
-  verifySignature(notification: MidtransNotificationBody): boolean;
+  createSnapPayment(params: QrisPaymentRequest): QrisPaymentResponse;
+  mapStatus(transactionStatus: string): PaymentStatus;
+  verifySignature(..._args: unknown[]): boolean;
 }
