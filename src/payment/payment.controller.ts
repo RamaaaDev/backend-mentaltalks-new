@@ -17,7 +17,10 @@ import type { AdminConfirmPaymentDto } from './payment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
-import type { CreatePaymentIntentDto } from './interface/payment.interface';
+import type {
+  CreatePaymentIntentDto,
+  SubmitReferenceDto,
+} from './interface/payment.interface';
 
 @Controller('payments')
 export class PaymentController {
@@ -32,6 +35,31 @@ export class PaymentController {
     @Body() dto: CreatePaymentIntentDto,
   ) {
     return this.paymentService.createPaymentIntent(req.user.user_id, dto);
+  }
+
+  /**
+   * POST /payments/reference — User submit nomor referensi setelah bayar QRIS
+   *
+   * Status payment tetap PENDING setelah ini.
+   * Admin yang akan konfirmasi via POST /payments/callback.
+   *
+   * Body:
+   *  - orderId: string
+   *  - referenceNumber: string
+   */
+  @Post('reference')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('USER')
+  @HttpCode(HttpStatus.OK)
+  submitReference(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SubmitReferenceDto,
+  ) {
+    return this.paymentService.submitReferenceNumber(
+      req.user.user_id,
+      body.orderId,
+      body.referenceNumber,
+    );
   }
 
   /**
@@ -65,11 +93,8 @@ export class PaymentController {
   /**
    * POST /payments/callback — Konfirmasi pembayaran QRIS oleh ADMIN
    *
-   * Endpoint ini dulunya adalah webhook Midtrans (tanpa auth).
-   * Sekarang hanya bisa diakses oleh admin yang sudah login.
-   *
    * Body:
-   *  - orderId: string          → order yang dikonfirmasi
+   *  - orderId: string
    *  - referenceNumber: string  → nomor referensi dari user / mutasi rekening
    *  - transactionStatus: 'success' | 'failed'
    */

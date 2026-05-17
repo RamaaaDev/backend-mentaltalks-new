@@ -62,6 +62,21 @@ export interface QrisPaymentResponse {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// SUBMIT REFERENCE NUMBER (user)
+// ══════════════════════════════════════════════════════════════════════════
+
+export interface SubmitReferenceDto {
+  /** Order ID yang sudah dibayar */
+  orderId: string;
+  /** Nomor referensi dari struk / riwayat transaksi app bank / e-wallet */
+  referenceNumber: string;
+}
+
+export interface SubmitReferenceResponse {
+  message: string;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // ADMIN CONFIRM PAYMENT (menggantikan MidtransNotificationBody)
 // ══════════════════════════════════════════════════════════════════════════
 

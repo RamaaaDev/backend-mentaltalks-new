@@ -352,6 +352,58 @@ export class PaymentService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // SUBMIT NOMOR REFERENSI (user)
+  // Endpoint: POST /payments/reference
+  // User menyimpan nomor referensi setelah bayar QRIS.
+  // Status payment tetap PENDING — admin yang akan konfirmasi via /callback.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async submitReferenceNumber(
+    userId: string,
+    orderId: string,
+    referenceNumber: string,
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderId },
+      select: {
+        orderId: true,
+        status: true,
+        meta: true,
+      },
+    });
+
+    if (!payment) throw new NotFoundException('Payment tidak ditemukan');
+
+    // Pastikan payment ini milik user yang request
+    const meta = payment.meta as unknown as PaymentMeta;
+    if (meta.userId !== userId) {
+      throw new NotFoundException('Payment tidak ditemukan');
+    }
+
+    if (payment.status === 'SUCCESS') {
+      throw new BadRequestException('Payment sudah dikonfirmasi');
+    }
+
+    if (payment.status === 'FAILED' || payment.status === 'EXPIRED') {
+      throw new BadRequestException('Payment tidak dapat diproses');
+    }
+
+    // Simpan nomor referensi di field transactionId — admin akan lihat ini
+    await this.prisma.payment.update({
+      where: { orderId },
+      data: {
+        transactionId: referenceNumber,
+        paymentType: 'qris',
+      },
+    });
+
+    return {
+      message:
+        'Nomor referensi berhasil disimpan. Admin akan memverifikasi dalam 1×24 jam kerja.',
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // ADMIN: GET ALL PAYMENTS
   // ══════════════════════════════════════════════════════════════════════════
 
