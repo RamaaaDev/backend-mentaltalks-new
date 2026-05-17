@@ -321,6 +321,7 @@ model Payment {
   bookingId       String?   @unique
   orderId         String    @unique
   token           String
+  referenceNumber  String?
   redirectUrl     String
   status          String
   grossAmount     Int
