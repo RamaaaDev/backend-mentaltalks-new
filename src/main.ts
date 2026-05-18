@@ -35,7 +35,7 @@ async function bootstrap() {
     }),
   );
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+  app.useStaticAssets('/var/www/backend/uploads', {
     prefix: '/uploads',
   });
 

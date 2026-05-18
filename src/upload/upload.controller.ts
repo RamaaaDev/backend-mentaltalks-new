@@ -16,10 +16,9 @@ import { UploadService } from './upload.service';
 import type { UpdateAvatarResponse } from './upload.interface';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from 'src/common/interface/authenticated-request.interface';
-import { join } from 'path';
 
 const storage: StorageEngine = diskStorage({
-  destination: join(process.cwd(), 'uploads', 'avatars'),
+  destination: '/var/www/backend/uploads/avatars',
   filename: (
     _req: AuthenticatedRequest,
     file: Express.Multer.File,
